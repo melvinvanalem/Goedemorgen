@@ -530,6 +530,22 @@
     }
     .toggle.on::after { transform: translateX(19px); }
 
+    .kind-check {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 14px;
+      color: var(--text);
+      cursor: pointer;
+    }
+    .kind-check input[type="checkbox"],
+    .kind-check input[type="radio"] {
+      accent-color: var(--accent);
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+
     .loc-options { display: flex; gap: 8px; margin-bottom: 13px; }
 
     .loc-opt {
@@ -607,6 +623,16 @@
     <div class="s-handle"></div>
     <div class="s-title">⚙️ Instellingen</div>
 
+    <!-- Thuisadres -->
+    <div class="s-section">
+      <div class="s-sec-title">Thuisadres</div>
+      <div class="s-field">
+        <label>Jouw thuisadres (gebruikt voor alle routes)</label>
+        <input type="text" class="s-input" id="s-home" placeholder="Straatnaam 1, Stad" autocomplete="off">
+      </div>
+      <button class="btn-primary" onclick="saveHomeAddress()">Opslaan</button>
+    </div>
+
     <!-- API Keys -->
     <div class="s-section">
       <div class="s-sec-title">API Keys</div>
@@ -649,6 +675,52 @@
       </div>
     </div>
 
+    <!-- Werkadres -->
+    <div class="s-section">
+      <div class="s-sec-title">Werkadres (voor ophalen kinderen)</div>
+      <div class="s-field">
+        <label>Vertrekpunt als je een kind ophaalt (middag)</label>
+        <input type="text" class="s-input" id="s-work" placeholder="Straatnaam 1, Stad" autocomplete="off">
+      </div>
+      <button class="btn-primary" onclick="saveWorkAddress()">Opslaan</button>
+    </div>
+
+    <!-- Kinderen -->
+    <div class="s-section">
+      <div class="s-sec-title">Kinderen (wegbrengen / ophalen)</div>
+      <div id="s-kinderen-list"></div>
+      <div class="add-form" id="add-kind-form" style="display:none">
+        <div class="s-field">
+          <label>Naam kind</label>
+          <input type="text" class="s-input" id="k-naam" placeholder="bijv. Emma">
+        </div>
+        <div class="s-field">
+          <label>Adres (school / opvang)</label>
+          <input type="text" class="s-input" id="k-adres" placeholder="Straatnaam 1, Stad">
+        </div>
+        <div class="s-field">
+          <label>Dagen</label>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px">
+            <label class="kind-check"><input type="checkbox" value="2" id="kd-2"> Di</label>
+            <label class="kind-check"><input type="checkbox" value="3" id="kd-3"> Wo</label>
+            <label class="kind-check"><input type="checkbox" value="4" id="kd-4"> Do</label>
+            <label class="kind-check"><input type="checkbox" value="5" id="kd-5"> Vr</label>
+          </div>
+        </div>
+        <div class="s-field">
+          <label>Moment</label>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+            <label class="kind-check"><input type="radio" name="k-wanneer" value="ochtend" id="kw-o"> Ochtend (wegbrengen vanuit thuis)</label>
+            <label class="kind-check"><input type="radio" name="k-wanneer" value="middag"  id="kw-m"> Middag (ophalen vanuit werk)</label>
+            <label class="kind-check"><input type="radio" name="k-wanneer" value="beide"   id="kw-b" checked> Beide</label>
+          </div>
+        </div>
+        <button class="btn-primary" style="margin-top:6px" onclick="saveKind()">Opslaan</button>
+        <button class="btn-secondary" onclick="cancelKind()">Annuleren</button>
+      </div>
+      <button class="btn-secondary" id="add-kind-btn" onclick="showAddKindForm()">+ Kind toevoegen</button>
+    </div>
+
     <!-- Routes -->
     <div class="s-section">
       <div class="s-sec-title">Routes</div>
@@ -686,6 +758,9 @@
 
 const K = {
   routes:   'gm_routes',
+  home:     'gm_home_address',
+  work:     'gm_work_address',
+  kinderen: 'gm_kinderen',
   token:    'gm_gcal_token',
   tokenExp: 'gm_gcal_exp',
   cals:     'gm_gcal_cals',
@@ -696,19 +771,15 @@ const K = {
 };
 
 const DEFAULT_ROUTES = [
-  { id:'r1', name:'Naar werk (Houten)',     from:'Jacob Geelstraat 8, Utrecht', to:'Pakketboot 57, Houten' },
-  { id:'r2', name:'Naar kantoor (Capelle)', from:'Jacob Geelstraat 8, Utrecht', to:'Elandstraat 120, Capelle aan den IJssel' },
+  { id:'r1', name:'Naar werk (Houten)',     from:'__home__', to:'Pakketboot 57, Houten' },
+  { id:'r2', name:'Naar kantoor (Capelle)', from:'__home__', to:'Elandstraat 120, Capelle aan den IJssel' },
 ];
 
-// Dag-specifieke routes voor Diede (niet opgeslagen in localStorage, altijd actueel)
-const DIEDE = {
-  3: { // woensdag
-    adres: 'Zwanenkamp 284, Maarssen',
-  },
-  4: { // donderdag
-    adres: 'Vilatuinlaan 21, Vleuten',
-  },
-};
+// Vervang __home__ token door het opgeslagen thuisadres
+function resolveAddress(addr) {
+  if (addr !== '__home__') return addr;
+  return ls.get(K.home, '') || '(thuisadres niet ingesteld)';
+}
 
 const NL_DAYS   = ['Zondag','Maandag','Dinsdag','Woensdag','Donderdag','Vrijdag','Zaterdag'];
 const NL_MONTHS = ['januari','februari','maart','april','mei','juni','juli','augustus','september','oktober','november','december'];
@@ -878,16 +949,25 @@ async function loadTraffic() {
       <div><div class="sk" style="width:48px;height:22px"></div></div>
     </div>`).join('');
 
-  // Draai from/to om bij terugrit voor gewone routes
-  const gereden = routes.map(r => terug ? { ...r, from: r.to, to: r.from } : r);
+  // Draai from/to om bij terugrit voor gewone routes + los __home__ op
+  const home = ls.get(K.home, '') || '(thuisadres niet ingesteld)';
+  const gereden = routes.map(r => {
+    const from = resolveAddress(r.from);
+    const to   = resolveAddress(r.to);
+    return terug ? { ...r, from: to, to: from } : { ...r, from, to };
+  });
 
-  // Voeg Diede-route toe op woensdag (3) en donderdag (4)
-  const diedeInfo = DIEDE[day];
-  if (diedeInfo) {
-    const diede = terug
-      ? { id:'diede', name:'🧒 Ophalen Diede', from:'Pakketboot 57, Houten',      to: diedeInfo.adres }
-      : { id:'diede', name:'🧒 Wegbrengen Diede', from:'Jacob Geelstraat 8, Utrecht', to: diedeInfo.adres };
-    gereden.push(diede);
+  // Kind-routes voor vandaag
+  const kinderen  = ls.get(K.kinderen, []);
+  const werkAdres = ls.get(K.work, '') || '(werkadres niet ingesteld)';
+  for (const kind of kinderen) {
+    if (!kind.dagen.includes(day)) continue;
+    if (!terug && (kind.wanneer === 'ochtend' || kind.wanneer === 'beide')) {
+      gereden.push({ id:'kind-'+kind.id, name:`🧒 Wegbrengen ${kind.naam}`, from: home, to: kind.adres });
+    }
+    if (terug && (kind.wanneer === 'middag' || kind.wanneer === 'beide')) {
+      gereden.push({ id:'kind-'+kind.id, name:`🧒 Ophalen ${kind.naam}`, from: werkAdres, to: kind.adres });
+    }
   }
 
   const results = await Promise.allSettled(gereden.map(r => calcRoute(r, key)));
@@ -1197,11 +1277,94 @@ async function loadNews() {
 // ═══════════════════════════════════════════════════════════════
 function openSettings() {
   document.getElementById('overlay').classList.add('open');
+  document.getElementById('s-home').value    = ls.get(K.home,'')    || '';
+  document.getElementById('s-work').value    = ls.get(K.work,'')    || '';
   document.getElementById('s-tomtom').value  = ls.get(K.tomtom,'')  || '';
   document.getElementById('s-gclient').value = ls.get(K.gclient,'') || '';
+  renderKinderen();
   renderSettingsRoutes();
   renderSettingsCalStatus();
   renderLocSettings();
+}
+
+function saveHomeAddress() {
+  const val = document.getElementById('s-home').value.trim();
+  if (!val) { alert('Vul je thuisadres in.'); return; }
+  ls.set(K.home, val);
+  loadTraffic();
+  const btn = event.target;
+  btn.textContent = '✓ Opgeslagen';
+  setTimeout(() => btn.textContent = 'Opslaan', 2000);
+}
+
+function saveWorkAddress() {
+  const val = document.getElementById('s-work').value.trim();
+  if (!val) { alert('Vul het werkadres in.'); return; }
+  ls.set(K.work, val);
+  loadTraffic();
+  const btn = event.target;
+  btn.textContent = '✓ Opgeslagen';
+  setTimeout(() => btn.textContent = 'Opslaan', 2000);
+}
+
+// ── Kinderen ───────────────────────────────────────────────────
+const NL_DAG_KORT   = { 2:'Di', 3:'Wo', 4:'Do', 5:'Vr' };
+const WANNEER_LABEL = { ochtend:'Ochtend (wegbrengen)', middag:'Middag (ophalen)', beide:'Ochtend & middag' };
+
+function renderKinderen() {
+  const kinderen = ls.get(K.kinderen, []);
+  const el = document.getElementById('s-kinderen-list');
+  if (!kinderen.length) {
+    el.innerHTML = `<div style="color:var(--muted);font-size:14px;margin-bottom:10px">Geen kinderen toegevoegd</div>`;
+    return;
+  }
+  el.innerHTML = kinderen.map((k, i) => {
+    const dagenStr = k.dagen.map(d => NL_DAG_KORT[d]).join(', ');
+    return `<div class="route-li">
+      <div>
+        <div class="route-li-name">🧒 ${k.naam}</div>
+        <div class="route-li-sub">${k.adres}</div>
+        <div class="route-li-sub">${dagenStr} · ${WANNEER_LABEL[k.wanneer]}</div>
+      </div>
+      <button class="del-btn" onclick="deleteKind(${i})">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function showAddKindForm() {
+  document.getElementById('add-kind-form').style.display = 'block';
+  document.getElementById('add-kind-btn').style.display  = 'none';
+}
+
+function cancelKind() {
+  document.getElementById('add-kind-form').style.display = 'none';
+  document.getElementById('add-kind-btn').style.display  = 'block';
+  document.getElementById('k-naam').value  = '';
+  document.getElementById('k-adres').value = '';
+  [2,3,4,5].forEach(d => { document.getElementById(`kd-${d}`).checked = false; });
+  document.getElementById('kw-b').checked = true;
+}
+
+function saveKind() {
+  const naam    = document.getElementById('k-naam').value.trim();
+  const adres   = document.getElementById('k-adres').value.trim();
+  const dagen   = [2,3,4,5].filter(d => document.getElementById(`kd-${d}`).checked);
+  const wanneer = document.querySelector('input[name="k-wanneer"]:checked')?.value || 'beide';
+  if (!naam || !adres || !dagen.length) { alert('Vul naam, adres en minimaal één dag in.'); return; }
+  const kinderen = ls.get(K.kinderen, []);
+  kinderen.push({ id: Date.now(), naam, adres, dagen, wanneer });
+  ls.set(K.kinderen, kinderen);
+  cancelKind();
+  renderKinderen();
+  loadTraffic();
+}
+
+function deleteKind(i) {
+  const kinderen = ls.get(K.kinderen, []);
+  kinderen.splice(i, 1);
+  ls.set(K.kinderen, kinderen);
+  renderKinderen();
+  loadTraffic();
 }
 
 function closeSettings() {
@@ -1343,6 +1506,14 @@ function saveApiKeys() {
 (async function init() {
   // Zet standaardroutes als er nog niets is
   if (!ls.get(K.routes)) ls.set(K.routes, DEFAULT_ROUTES);
+
+  // Toon melding als thuisadres nog niet ingesteld is
+  if (!ls.get(K.home)) {
+    document.getElementById('traffic-content').innerHTML =
+      `<div style="color:var(--accent);font-size:14px">
+        📍 Stel eerst je <strong>thuisadres</strong> in via ⚙️ om reistijden te zien.
+      </div>`;
+  }
 
   // Alles parallel laden
   await Promise.allSettled([
