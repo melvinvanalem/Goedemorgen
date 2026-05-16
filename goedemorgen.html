@@ -1,0 +1,1357 @@
+<!--
+  ╔══════════════════════════════════════════════════════════════════╗
+  ║                    GOEDEMORGEN APP                               ║
+  ║                    Persoonlijk ochtend-dashboard                 ║
+  ╠══════════════════════════════════════════════════════════════════╣
+  ║  SETUP INSTRUCTIES                                               ║
+  ║                                                                  ║
+  ║  1. GOOGLE CALENDAR                                              ║
+  ║     a) Ga naar https://console.cloud.google.com                  ║
+  ║     b) Maak een nieuw project aan (bijv. "Goedemorgen")          ║
+  ║     c) Activeer de "Google Calendar API" via APIs & Services     ║
+  ║     d) Ga naar Credentials → + Create Credentials               ║
+  ║        → OAuth Client ID → Web application                       ║
+  ║     e) Voeg toe bij Authorized redirect URIs:                    ║
+  ║        https://melvinvanalem.github.io/goedemorgen/              ║
+  ║        (of je lokale testadres, bijv. http://localhost:8080)     ║
+  ║     f) Kopieer de Client ID (eindigt op .googleusercontent.com)  ║
+  ║     g) Vul in via het tandwiel ⚙️ → Google OAuth Client ID      ║
+  ║                                                                  ║
+  ║  2. TOMTOM API (reistijd & verkeer)                              ║
+  ║     a) Ga naar https://developer.tomtom.com                      ║
+  ║     b) Registreer een gratis account                             ║
+  ║     c) Maak een nieuwe App aan in het dashboard                  ║
+  ║     d) Kopieer de API key                                        ║
+  ║     e) Vul in via het tandwiel ⚙️ → TomTom API Key              ║
+  ║        Gratis tier: 2.500 requests/dag — ruim voldoende          ║
+  ║                                                                  ║
+  ║  3. EERSTE GEBRUIK                                               ║
+  ║     Open de pagina, klik ⚙️ rechtsboven, vul je keys in         ║
+  ║     en koppel je Google Agenda. Klaar!                           ║
+  ╚══════════════════════════════════════════════════════════════════╝
+-->
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0f1923">
+  <title>Goedemorgen</title>
+  <style>
+    /* ── Reset & tokens ──────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #0f1923;
+      --card:         #182030;
+      --card-hi:      #1f2d42;
+      --border:       rgba(255,255,255,0.06);
+      --border-hi:    rgba(255,255,255,0.12);
+      --accent:       #f59e0b;
+      --accent-soft:  rgba(245,158,11,0.12);
+      --accent-dim:   rgba(245,158,11,0.45);
+      --text:         #e8edf4;
+      --muted:        #6b7e95;
+      --dim:          rgba(232,237,244,0.32);
+      --green:        #10b981;
+      --orange:       #f97316;
+      --red:          #ef4444;
+      --radius:       18px;
+      --radius-sm:    11px;
+      --safe-t:       env(safe-area-inset-top,    0px);
+      --safe-b:       env(safe-area-inset-bottom, 0px);
+    }
+
+    html {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+      background: var(--bg);
+      min-height: 100dvh;
+      padding: calc(var(--safe-t) + 20px) 16px calc(var(--safe-b) + 40px);
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    /* ── Cards ───────────────────────────────────────────────── */
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      padding: 20px;
+      margin-bottom: 12px;
+    }
+
+    .card-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    /* ── Skeleton loaders ────────────────────────────────────── */
+    .sk {
+      background: linear-gradient(90deg,
+        rgba(255,255,255,0.04) 0%,
+        rgba(255,255,255,0.09) 50%,
+        rgba(255,255,255,0.04) 100%);
+      background-size: 200% 100%;
+      animation: shimmer 1.6s infinite;
+      border-radius: 6px;
+      height: 15px;
+      margin-bottom: 9px;
+    }
+    @keyframes shimmer {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* ── 1. Header: Tijd & datum ─────────────────────────────── */
+    .app-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 14px;
+    }
+
+    #clock {
+      font-size: 66px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    #date-label {
+      font-size: 17px;
+      color: var(--muted);
+      margin-top: 5px;
+      font-weight: 400;
+      letter-spacing: 0.01em;
+    }
+
+    .settings-btn {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      width: 42px;
+      height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 19px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      flex-shrink: 0;
+      margin-top: 6px;
+    }
+
+    /* ── 2. Weer ─────────────────────────────────────────────── */
+    .w-main {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    .w-icon { font-size: 54px; line-height: 1; }
+
+    .w-temp {
+      font-size: 38px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .w-feels {
+      font-size: 14px;
+      font-weight: 400;
+      color: var(--muted);
+      margin-left: 6px;
+    }
+
+    .w-desc {
+      font-size: 15px;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    .w-pills {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .w-pill {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 13px;
+      color: var(--muted);
+      background: rgba(255,255,255,0.05);
+      padding: 5px 10px;
+      border-radius: 20px;
+    }
+
+    .w-tomorrow {
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .w-tm-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      min-width: 54px;
+    }
+
+    .w-tm-icon  { font-size: 24px; }
+    .w-tm-info  { flex: 1; font-size: 14px; color: var(--muted); }
+    .w-tm-temp  { font-size: 15px; font-weight: 600; }
+
+    /* ── 3. Verkeer ──────────────────────────────────────────── */
+    .day-msg {
+      font-size: 16px;
+      color: var(--muted);
+      padding: 4px 0;
+    }
+
+    .route-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 13px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .route-row:last-child { border-bottom: none; }
+
+    .route-name { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+    .route-sub  { font-size: 12px; color: var(--muted); }
+    .route-right { text-align: right; }
+
+    .route-mins {
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-top: 4px;
+    }
+    .badge-ok     { background: rgba(16,185,129,0.14); color: var(--green); }
+    .badge-busy   { background: rgba(249,115,22,0.14); color: var(--orange); }
+    .badge-heavy  { background: rgba(239,68,68,0.14);  color: var(--red); }
+    .badge-unkn   { background: rgba(107,126,149,0.14); color: var(--muted); }
+
+    /* ── 4. Agenda ───────────────────────────────────────────── */
+    .connect-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      background: var(--accent-soft);
+      border: 1px solid var(--accent-dim);
+      color: var(--accent);
+      padding: 13px 20px;
+      border-radius: var(--radius-sm);
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      font-family: inherit;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .ev {
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 8px;
+      border: 1px solid var(--border);
+    }
+    .ev:last-child { margin-bottom: 0; }
+
+    .ev.next {
+      background: var(--accent-soft);
+      border-color: var(--accent-dim);
+    }
+
+    .ev.past { opacity: 0.35; }
+
+    .ev-time {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      letter-spacing: 0.02em;
+    }
+    .ev.next .ev-time { color: var(--accent); }
+
+    .ev-title    { font-size: 15px; font-weight: 600; line-height: 1.3; }
+    .ev-location { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    .now-badge {
+      background: var(--accent);
+      color: #000;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 1px 6px;
+      border-radius: 8px;
+      letter-spacing: 0.04em;
+    }
+
+    /* ── 5. Nieuws ───────────────────────────────────────────── */
+    .news-group-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 16px 0 8px;
+    }
+    .news-group-label:first-child { margin-top: 0; }
+
+    .news-item {
+      display: block;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      text-decoration: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .news-item:last-of-type { border-bottom: none; }
+
+    .news-title { font-size: 14px; color: var(--text); line-height: 1.45; margin-bottom: 3px; }
+    .news-meta  { font-size: 12px; color: var(--muted); }
+
+    .news-footer {
+      font-size: 11px;
+      color: var(--muted);
+      text-align: center;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── Instellingen-overlay ────────────────────────────────── */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.65);
+      z-index: 200;
+      display: none;
+      align-items: flex-end;
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+    }
+    .overlay.open { display: flex; }
+
+    .settings-sheet {
+      background: #182030;
+      border-radius: 26px 26px 0 0;
+      width: 100%;
+      max-height: 92dvh;
+      overflow-y: auto;
+      padding-bottom: calc(var(--safe-b) + 24px);
+      animation: slideUp .28s cubic-bezier(0.32,0.72,0,1);
+    }
+    @keyframes slideUp {
+      from { transform: translateY(100%); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+
+    .s-handle {
+      width: 38px; height: 4px;
+      background: rgba(255,255,255,0.18);
+      border-radius: 2px;
+      margin: 13px auto 20px;
+    }
+
+    .s-title {
+      font-size: 21px;
+      font-weight: 700;
+      padding: 0 20px;
+      margin-bottom: 22px;
+    }
+
+    .s-section { padding: 0 20px; margin-bottom: 26px; }
+
+    .s-sec-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 13px;
+    }
+
+    .s-field { margin-bottom: 13px; }
+    .s-field label {
+      display: block;
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .s-input {
+      width: 100%;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 15px;
+      padding: 11px 14px;
+      -webkit-appearance: none;
+      font-family: inherit;
+    }
+    .s-input:focus { outline: none; border-color: var(--accent-dim); }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 15px;
+      font-weight: 700;
+      padding: 13px 20px;
+      cursor: pointer;
+      width: 100%;
+      font-family: inherit;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 500;
+      padding: 11px 16px;
+      cursor: pointer;
+      font-family: inherit;
+      -webkit-tap-highlight-color: transparent;
+      margin-top: 9px;
+      width: 100%;
+    }
+
+    .btn-danger {
+      background: rgba(239,68,68,0.1);
+      color: var(--red);
+      border: 1px solid rgba(239,68,68,0.2);
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-weight: 500;
+      padding: 11px 16px;
+      cursor: pointer;
+      font-family: inherit;
+      -webkit-tap-highlight-color: transparent;
+      margin-top: 9px;
+      width: 100%;
+    }
+
+    .route-li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 11px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .route-li:last-child { border-bottom: none; }
+    .route-li-name { font-size: 15px; font-weight: 500; }
+    .route-li-sub  { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    .del-btn {
+      background: none;
+      border: none;
+      color: var(--red);
+      font-size: 20px;
+      cursor: pointer;
+      padding: 4px 8px;
+      -webkit-tap-highlight-color: transparent;
+      line-height: 1;
+    }
+
+    .add-form {
+      margin-top: 12px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 15px;
+    }
+
+    .cal-li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 11px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 15px;
+    }
+    .cal-li:last-child { border-bottom: none; }
+
+    .toggle {
+      width: 46px; height: 27px;
+      background: rgba(255,255,255,0.14);
+      border-radius: 14px;
+      position: relative;
+      cursor: pointer;
+      transition: background .2s;
+      flex-shrink: 0;
+    }
+    .toggle.on { background: var(--accent); }
+    .toggle::after {
+      content: '';
+      position: absolute;
+      width: 21px; height: 21px;
+      background: #fff;
+      border-radius: 50%;
+      top: 3px; left: 3px;
+      transition: transform .2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .toggle.on::after { transform: translateX(19px); }
+
+    .loc-options { display: flex; gap: 8px; margin-bottom: 13px; }
+
+    .loc-opt {
+      flex: 1;
+      padding: 11px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      text-align: center;
+      font-size: 14px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      color: var(--muted);
+    }
+    .loc-opt.active {
+      background: var(--accent-soft);
+      border-color: var(--accent-dim);
+      color: var(--accent);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header: klok + settings ───────────────────────────────── -->
+<div class="app-header">
+  <div>
+    <div id="clock">--:--</div>
+    <div id="date-label">Laden...</div>
+  </div>
+  <button class="settings-btn" onclick="openSettings()" aria-label="Instellingen">⚙️</button>
+</div>
+
+<!-- ── 2. Weer ────────────────────────────────────────────────── -->
+<div class="card">
+  <div class="card-label">🌤 Weer</div>
+  <div id="weather-content">
+    <div class="sk" style="width:55%;height:38px;margin-bottom:10px"></div>
+    <div class="sk" style="width:38%"></div>
+    <div class="sk" style="width:75%;margin-top:14px"></div>
+  </div>
+</div>
+
+<!-- ── 3. Verkeer ─────────────────────────────────────────────── -->
+<div class="card">
+  <div class="card-label">🚗 Reistijd</div>
+  <div id="traffic-content">
+    <div class="sk" style="width:65%"></div>
+    <div class="sk" style="width:45%;margin-top:10px"></div>
+  </div>
+</div>
+
+<!-- ── 4. Agenda ──────────────────────────────────────────────── -->
+<div class="card">
+  <div class="card-label">📅 Agenda</div>
+  <div id="calendar-content">
+    <div class="sk" style="width:75%"></div>
+    <div class="sk" style="width:55%;margin-top:10px"></div>
+  </div>
+</div>
+
+<!-- ── 5. Nieuws ──────────────────────────────────────────────── -->
+<div class="card">
+  <div class="card-label">📰 Nieuws</div>
+  <div id="news-content">
+    <div class="sk"></div>
+    <div class="sk" style="width:88%"></div>
+    <div class="sk" style="width:76%"></div>
+    <div class="sk" style="width:92%"></div>
+  </div>
+</div>
+
+<!-- ── Instellingen overlay ───────────────────────────────────── -->
+<div class="overlay" id="overlay" onclick="onOverlayClick(event)">
+  <div class="settings-sheet" id="settings-sheet">
+    <div class="s-handle"></div>
+    <div class="s-title">⚙️ Instellingen</div>
+
+    <!-- API Keys -->
+    <div class="s-section">
+      <div class="s-sec-title">API Keys</div>
+      <div class="s-field">
+        <label>TomTom API Key (reistijd & verkeer)</label>
+        <input type="text" class="s-input" id="s-tomtom" placeholder="Plak hier je TomTom API key" autocomplete="off">
+      </div>
+      <div class="s-field">
+        <label>Google OAuth Client ID (agenda)</label>
+        <input type="text" class="s-input" id="s-gclient" placeholder="…apps.googleusercontent.com" autocomplete="off">
+      </div>
+      <button class="btn-primary" onclick="saveApiKeys()">Opslaan</button>
+    </div>
+
+    <!-- Google Agenda -->
+    <div class="s-section">
+      <div class="s-sec-title">Google Agenda</div>
+      <div id="s-cal-status"></div>
+    </div>
+
+    <!-- Agenda-selectie (verschijnt na koppelen) -->
+    <div class="s-section" id="s-cals-wrap" style="display:none">
+      <div class="s-sec-title">Welke agenda's tonen?</div>
+      <div id="s-cals-list"></div>
+    </div>
+
+    <!-- Weerlocatie -->
+    <div class="s-section">
+      <div class="s-sec-title">Weerlocatie</div>
+      <div class="loc-options">
+        <div class="loc-opt" id="loc-auto"   onclick="setLocMode('auto')">📍 Automatisch</div>
+        <div class="loc-opt" id="loc-manual" onclick="setLocMode('manual')">✏️ Handmatig</div>
+      </div>
+      <div id="loc-manual-wrap" style="display:none">
+        <div class="s-field">
+          <label>Stad of coördinaten (lat,lon)</label>
+          <input type="text" class="s-input" id="s-loc" placeholder="bijv. Amsterdam of 52.37,4.90">
+        </div>
+        <button class="btn-primary" onclick="saveLocation()">Locatie opslaan</button>
+      </div>
+    </div>
+
+    <!-- Routes -->
+    <div class="s-section">
+      <div class="s-sec-title">Routes</div>
+      <div id="s-routes-list"></div>
+      <div class="add-form" id="add-form" style="display:none">
+        <div class="s-field">
+          <label>Naam</label>
+          <input type="text" class="s-input" id="r-name" placeholder="bijv. Naar sportschool">
+        </div>
+        <div class="s-field">
+          <label>Vertrekadres</label>
+          <input type="text" class="s-input" id="r-from" placeholder="Straat 1, Stad">
+        </div>
+        <div class="s-field">
+          <label>Bestemmingsadres</label>
+          <input type="text" class="s-input" id="r-to"   placeholder="Straat 2, Stad">
+        </div>
+        <button class="btn-primary" style="margin-top:6px" onclick="saveRoute()">Opslaan</button>
+        <button class="btn-secondary" onclick="cancelRoute()">Annuleren</button>
+      </div>
+      <button class="btn-secondary" id="add-route-btn" onclick="showAddForm()">+ Route toevoegen</button>
+    </div>
+
+    <!-- Sluiten -->
+    <div class="s-section">
+      <button class="btn-secondary" onclick="closeSettings()">Sluiten</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  GOEDEMORGEN — © persoonlijk gebruik
+// ═══════════════════════════════════════════════════════════════
+
+const K = {
+  routes:   'gm_routes',
+  token:    'gm_gcal_token',
+  tokenExp: 'gm_gcal_exp',
+  cals:     'gm_gcal_cals',
+  locMode:  'gm_loc_mode',
+  locVal:   'gm_loc_val',
+  tomtom:   'gm_tomtom_key',
+  gclient:  'gm_gclient_id',
+};
+
+const DEFAULT_ROUTES = [
+  { id:'r1', name:'Naar werk (Houten)',     from:'Jacob Geelstraat 8, Utrecht', to:'Pakketboot 57, Houten' },
+  { id:'r2', name:'Naar kantoor (Capelle)', from:'Jacob Geelstraat 8, Utrecht', to:'Elandstraat 120, Capelle aan den IJssel' },
+];
+
+// Dag-specifieke routes voor Diede (niet opgeslagen in localStorage, altijd actueel)
+const DIEDE = {
+  3: { // woensdag
+    adres: 'Zwanenkamp 284, Maarssen',
+  },
+  4: { // donderdag
+    adres: 'Vilatuinlaan 21, Vleuten',
+  },
+};
+
+const NL_DAYS   = ['Zondag','Maandag','Dinsdag','Woensdag','Donderdag','Vrijdag','Zaterdag'];
+const NL_MONTHS = ['januari','februari','maart','april','mei','juni','juli','augustus','september','oktober','november','december'];
+
+// ── localStorage helper ────────────────────────────────────────
+const ls = {
+  get(k, fb=null) {
+    try { const v = localStorage.getItem(k); return v===null ? fb : JSON.parse(v); } catch { return fb; }
+  },
+  set(k,v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+const pad = n => String(n).padStart(2,'0');
+
+function relTime(str) {
+  const mins = Math.floor((Date.now() - new Date(str)) / 60000);
+  if (mins < 2)   return 'Zojuist';
+  if (mins < 60)  return `${mins} min geleden`;
+  const h = Math.floor(mins/60);
+  if (h < 24)     return `${h} uur geleden`;
+  return `${Math.floor(h/24)} dagen geleden`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  1. KLOK
+// ═══════════════════════════════════════════════════════════════
+function tick() {
+  const n = new Date();
+  document.getElementById('clock').textContent =
+    `${pad(n.getHours())}:${pad(n.getMinutes())}:${pad(n.getSeconds())}`;
+  document.getElementById('date-label').textContent =
+    `${NL_DAYS[n.getDay()]} ${n.getDate()} ${NL_MONTHS[n.getMonth()]} ${n.getFullYear()}`;
+}
+setInterval(tick, 1000);
+tick();
+
+// ═══════════════════════════════════════════════════════════════
+//  2. WEER  (Open-Meteo — geen API key vereist)
+// ═══════════════════════════════════════════════════════════════
+const WMO = {
+  0:['Helder','☀️'], 1:['Overwegend helder','🌤️'], 2:['Gedeeltelijk bewolkt','⛅'],
+  3:['Bewolkt','☁️'], 45:['Mist','🌫️'], 48:['Rijpmist','🌫️'],
+  51:['Lichte motregen','🌦️'], 53:['Matige motregen','🌦️'], 55:['Dichte motregen','🌧️'],
+  61:['Lichte regen','🌧️'], 63:['Matige regen','🌧️'], 65:['Zware regen','🌧️'],
+  66:['Lichte ijsregen','🌨️'], 67:['Zware ijsregen','🌨️'],
+  71:['Lichte sneeuw','❄️'], 73:['Matige sneeuw','❄️'], 75:['Zware sneeuw','❄️'],
+  77:['Sneeuwkorrels','🌨️'],
+  80:['Lichte buien','🌦️'], 81:['Matige buien','🌧️'], 82:['Zware buien','⛈️'],
+  85:['Lichte sneeuwbuien','🌨️'], 86:['Zware sneeuwbuien','❄️'],
+  95:['Onweer','⛈️'], 96:['Onweer met hagel','⛈️'], 99:['Onweer met zware hagel','⛈️'],
+};
+const wmo = code => WMO[code] || ['Onbekend','🌡️'];
+
+const WIND = ['N','NO','O','ZO','Z','ZW','W','NW'];
+const windDir = deg => WIND[Math.round(deg/45)%8];
+
+async function loadWeather() {
+  const mode = ls.get(K.locMode,'auto');
+  let lat, lon;
+
+  if (mode === 'manual') {
+    const v = ls.get(K.locVal,'');
+    if (v) {
+      const parts = v.split(',').map(p=>p.trim());
+      if (parts.length===2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        lat = parseFloat(parts[0]); lon = parseFloat(parts[1]);
+      } else {
+        // geocode via Open-Meteo geocoding
+        try {
+          const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(v)}&count=1&language=nl`);
+          const d = await r.json();
+          if (d.results?.length) { lat=d.results[0].latitude; lon=d.results[0].longitude; }
+        } catch {}
+      }
+    }
+  }
+
+  if (lat==null) {
+    // probeer geolocatie
+    try {
+      const pos = await new Promise((res,rej) =>
+        navigator.geolocation.getCurrentPosition(res,rej,{timeout:5000,maximumAge:300000}));
+      lat = pos.coords.latitude; lon = pos.coords.longitude;
+    } catch {
+      lat = 52.0907; lon = 5.1214; // Utrecht fallback
+    }
+  }
+
+  await fetchWeather(lat, lon);
+}
+
+async function fetchWeather(lat, lon) {
+  const el = document.getElementById('weather-content');
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast`
+      + `?latitude=${lat}&longitude=${lon}`
+      + `&current=temperature_2m,apparent_temperature,precipitation_probability,wind_speed_10m,wind_direction_10m,weather_code`
+      + `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max`
+      + `&timezone=Europe%2FAmsterdam`;
+
+    const d = await fetch(url).then(r=>r.json());
+    const c = d.current;
+    const dy = d.daily;
+
+    const [desc,  icon]  = wmo(c.weather_code);
+    const [ddesc, dicon] = wmo(dy.weather_code[1]);
+
+    el.innerHTML = `
+      <div class="w-main">
+        <div class="w-icon">${icon}</div>
+        <div>
+          <div class="w-temp">${Math.round(c.temperature_2m)}°<span class="w-feels">voelt als ${Math.round(c.apparent_temperature)}°</span></div>
+          <div class="w-desc">${desc}</div>
+        </div>
+      </div>
+      <div class="w-pills">
+        <div class="w-pill">🌧️ ${c.precipitation_probability ?? 0}%</div>
+        <div class="w-pill">💨 ${windDir(c.wind_direction_10m)} ${Math.round(c.wind_speed_10m)} km/u</div>
+      </div>
+      <div class="w-tomorrow">
+        <span class="w-tm-label">Morgen</span>
+        <span class="w-tm-icon">${dicon}</span>
+        <span class="w-tm-info">${ddesc}</span>
+        <span class="w-tm-temp">${Math.round(dy.temperature_2m_min[1])}–${Math.round(dy.temperature_2m_max[1])}° · 🌧️${dy.precipitation_probability_max[1]}%</span>
+      </div>`;
+  } catch {
+    el.innerHTML = `<span style="color:var(--muted)">Weerdata niet beschikbaar</span>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  3. VERKEER  (TomTom Routing API)
+// ═══════════════════════════════════════════════════════════════
+async function loadTraffic() {
+  const now  = new Date();
+  const day  = now.getDay(); // 0=zo,1=ma,6=za
+  const hour = now.getHours();
+  const el   = document.getElementById('traffic-content');
+
+  if ([0,1,6].includes(day)) {
+    const msgs = {
+      0: 'Rustige zondag. Geniet ervan ☕',
+      1: 'Maandag — lekker thuis blijven 🛋️',
+      6: 'Weekend! Geen files vandaag 🎉',
+    };
+    el.innerHTML = `<div class="day-msg">${msgs[day]}</div>`;
+    return;
+  }
+
+  const key    = ls.get(K.tomtom, '');
+  const routes = ls.get(K.routes, DEFAULT_ROUTES);
+
+  if (!key) {
+    el.innerHTML = `<div style="color:var(--muted);font-size:14px">Voeg een TomTom API key toe in ⚙️ om reistijden te zien.</div>`;
+    return;
+  }
+
+  // 04:00–11:59 → huis naar werk | 12:00–03:59 → werk naar huis
+  const terug = hour >= 12 || hour < 4;
+  const richting = terug ? '🏠 Naar huis' : '💼 Naar werk';
+
+  // Toon skeleton per route
+  el.innerHTML = `<div style="font-size:12px;color:var(--muted);margin-bottom:12px;font-weight:600;letter-spacing:0.04em">${richting}</div>`
+    + routes.map(() => `
+    <div class="route-row">
+      <div><div class="sk" style="width:130px;height:14px;margin-bottom:7px"></div><div class="sk" style="width:85px;height:11px"></div></div>
+      <div><div class="sk" style="width:48px;height:22px"></div></div>
+    </div>`).join('');
+
+  // Draai from/to om bij terugrit voor gewone routes
+  const gereden = routes.map(r => terug ? { ...r, from: r.to, to: r.from } : r);
+
+  // Voeg Diede-route toe op woensdag (3) en donderdag (4)
+  const diedeInfo = DIEDE[day];
+  if (diedeInfo) {
+    const diede = terug
+      ? { id:'diede', name:'🧒 Ophalen Diede', from:'Pakketboot 57, Houten',      to: diedeInfo.adres }
+      : { id:'diede', name:'🧒 Wegbrengen Diede', from:'Jacob Geelstraat 8, Utrecht', to: diedeInfo.adres };
+    gereden.push(diede);
+  }
+
+  const results = await Promise.allSettled(gereden.map(r => calcRoute(r, key)));
+
+  el.innerHTML = `<div style="font-size:12px;color:var(--muted);margin-bottom:12px;font-weight:600;letter-spacing:0.04em">${richting}</div>`
+    + results.map((res,i) => {
+    const r = gereden[i];
+    if (res.status==='rejected' || !res.value) {
+      return `<div class="route-row">
+        <div><div class="route-name">${r.name}</div><div class="route-sub">Vertrek: ${r.from}</div></div>
+        <div class="route-right"><span class="badge badge-unkn">Niet beschikbaar</span></div>
+      </div>`;
+    }
+    const {mins, normalMins} = res.value;
+    const diff = mins - normalMins;
+    const pct  = normalMins > 0 ? diff/normalMins : 0;
+
+    let badgeClass = 'badge-ok';
+    let badgeText  = diff > 0 ? `+${diff} min` : 'Vlot rijden';
+    if (pct > 0.4)      { badgeClass='badge-heavy'; badgeText=`+${diff} min · Veel drukte`; }
+    else if (pct > 0.2) { badgeClass='badge-busy';  badgeText=`+${diff} min · Druk op de weg`; }
+
+    return `<div class="route-row">
+      <div><div class="route-name">${r.name}</div><div class="route-sub">Vertrek: ${r.from}</div></div>
+      <div class="route-right">
+        <div class="route-mins">${mins} min</div>
+        <span class="badge ${badgeClass}">${badgeText}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function geocode(address, key) {
+  const url = `https://api.tomtom.com/search/2/geocode/${encodeURIComponent(address)}.json?key=${key}&limit=1&countrySet=NL`;
+  const d   = await fetch(url).then(r=>r.json());
+  const p   = d.results?.[0]?.position;
+  if (!p) throw new Error('Adres niet gevonden: '+address);
+  return p;
+}
+
+async function calcRoute(route, key) {
+  try {
+    const [from, to] = await Promise.all([
+      geocode(route.from, key),
+      geocode(route.to,   key),
+    ]);
+    const base = `https://api.tomtom.com/routing/1/calculateRoute`
+      + `/${from.lat},${from.lon}:${to.lat},${to.lon}/json?key=${key}&travelMode=car`;
+
+    const [withT, noT] = await Promise.all([
+      fetch(base+'&traffic=true').then(r=>r.json()),
+      fetch(base+'&traffic=false').then(r=>r.json()),
+    ]);
+
+    const mins       = Math.round(withT.routes[0].summary.travelTimeInSeconds / 60);
+    const normalMins = Math.round(noT.routes[0].summary.travelTimeInSeconds   / 60);
+    return { mins, normalMins };
+  } catch { return null; }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  4. GOOGLE AGENDA  (OAuth 2.0 implicit grant — geen backend)
+// ═══════════════════════════════════════════════════════════════
+
+// Vang OAuth-redirect token op uit URL-hash
+(function catchToken() {
+  const hash = window.location.hash;
+  if (!hash.includes('access_token')) return;
+  const p   = new URLSearchParams(hash.slice(1));
+  const tok = p.get('access_token');
+  const exp = parseInt(p.get('expires_in') || '3600');
+  if (tok) {
+    ls.set(K.token,    tok);
+    ls.set(K.tokenExp, Date.now() + exp*1000);
+    history.replaceState(null,'',window.location.pathname);
+  }
+})();
+
+function validToken() {
+  const t = ls.get(K.token);
+  const e = ls.get(K.tokenExp, 0);
+  return (t && Date.now() < e - 30000) ? t : null;
+}
+
+function startOAuth() {
+  const cid = ls.get(K.gclient,'');
+  if (!cid) { alert('Voeg eerst een Google OAuth Client ID toe in ⚙️.'); return; }
+  const redirect = location.origin + location.pathname;
+  location.href = 'https://accounts.google.com/o/oauth2/v2/auth'
+    + `?client_id=${encodeURIComponent(cid)}`
+    + `&redirect_uri=${encodeURIComponent(redirect)}`
+    + `&response_type=token`
+    + `&scope=${encodeURIComponent('https://www.googleapis.com/auth/calendar.readonly')}`;
+}
+
+async function loadCalendar() {
+  const el  = document.getElementById('calendar-content');
+  const tok = validToken();
+
+  if (!tok) {
+    el.innerHTML = `<button class="connect-btn" onclick="startOAuth()">📅 Verbind Google Agenda</button>`;
+    return;
+  }
+
+  try {
+    const hdrs = { Authorization:`Bearer ${tok}` };
+
+    // Haal agenda-lijst op
+    const calList = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {headers:hdrs})
+      .then(r=>{ if(!r.ok) throw new Error('auth'); return r.json(); });
+
+    const allCals   = calList.items || [];
+    const enabledIds = ls.get(K.cals, null);
+    const selIds     = enabledIds
+      ? allCals.filter(c=>enabledIds.includes(c.id)).map(c=>c.id)
+      : allCals.map(c=>c.id);
+
+    const now   = new Date();
+    const t0    = new Date(now); t0.setHours(0,0,0,0);
+    const t24   = new Date(now); t24.setHours(23,59,59,999);
+
+    const fetches = await Promise.allSettled(selIds.map(id =>
+      fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(id)}/events`
+        + `?timeMin=${t0.toISOString()}&timeMax=${t24.toISOString()}`
+        + `&singleEvents=true&orderBy=startTime&maxResults=25`,
+        {headers:hdrs}).then(r=>r.json())
+    ));
+
+    let events = [];
+    for (const r of fetches) {
+      if (r.status==='fulfilled' && r.value.items) events.push(...r.value.items);
+    }
+
+    events.sort((a,b) =>
+      new Date(a.start.dateTime||a.start.date) - new Date(b.start.dateTime||b.start.date)
+    );
+
+    if (!events.length) {
+      el.innerHTML = `<div style="color:var(--muted);font-size:15px">Geen afspraken vandaag — vrije dag 🙌</div>`;
+      renderSettingsCals(allCals);
+      return;
+    }
+
+    // Vind 'eerstvolgende' of 'lopende' afspraak
+    let nextIdx = -1;
+    for (let i=0; i<events.length; i++) {
+      const start = new Date(events[i].start.dateTime || events[i].start.date);
+      const end   = new Date(events[i].end.dateTime   || events[i].end.date);
+      if (end <= now) continue;
+      nextIdx = i;
+      if (start <= now) break; // lopend → dit is "nu"
+    }
+    if (nextIdx===-1) nextIdx = events.length-1; // alle voorbij → highlight laatste
+
+    el.innerHTML = events.map((ev,i) => {
+      const start  = new Date(ev.start.dateTime || ev.start.date);
+      const end    = new Date(ev.end.dateTime   || ev.end.date);
+      const isPast = end   <= now;
+      const isNow  = start <= now && end > now;
+      const isNext = i === nextIdx;
+      const allDay = !ev.start.dateTime;
+      const tStr   = allDay ? 'Hele dag' : `${pad(start.getHours())}:${pad(start.getMinutes())} – ${pad(end.getHours())}:${pad(end.getMinutes())}`;
+      const cls    = ['ev', isNext?'next':'', isPast?'past':''].filter(Boolean).join(' ');
+
+      return `<div class="${cls}">
+        <div class="ev-time">${tStr}${isNow ? '<span class="now-badge">NU</span>' : ''}</div>
+        <div class="ev-title">${ev.summary || 'Afspraak'}</div>
+        ${ev.location ? `<div class="ev-location">📍 ${ev.location}</div>` : ''}
+      </div>`;
+    }).join('');
+
+    renderSettingsCals(allCals);
+
+  } catch(e) {
+    if (e.message==='auth') {
+      ls.set(K.token, null);
+      el.innerHTML = `<button class="connect-btn" onclick="startOAuth()">📅 Verbind Google Agenda</button>`;
+    } else {
+      el.innerHTML = `<div style="color:var(--muted);font-size:14px">Agenda niet beschikbaar</div>`;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  5. NIEUWS  (RSS — rss2json met XML-fallback via allorigins)
+// ═══════════════════════════════════════════════════════════════
+const FEEDS = [
+  { label:'Nieuws', url:'https://feeds.nos.nl/nosnieuwsalgemeen',  count:5 },
+  { label:'Tech',   url:'https://tweakers.net/feeds/mixed.xml',    count:3 },
+  { label:'AI',     url:'https://the-decoder.com/feed/',           count:3 },
+];
+
+function parseRssXml(xml, count) {
+  const doc   = new DOMParser().parseFromString(xml, 'text/xml');
+  const items = [...doc.querySelectorAll('item')].slice(0, count);
+  return items.map(item => {
+    // <link> is soms een lege tag gevolgd door een tekst-node — probeer beide
+    const linkEl = item.querySelector('link');
+    const link   = linkEl?.textContent?.trim()
+      || item.querySelector('guid')?.textContent?.trim()
+      || '#';
+    return {
+      title:   item.querySelector('title')?.textContent?.trim()   || '',
+      link,
+      pubDate: item.querySelector('pubDate')?.textContent?.trim() || new Date().toISOString(),
+    };
+  }).filter(i => i.title);
+}
+
+function raceTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms)),
+  ]);
+}
+
+async function fetchFeed(url, count) {
+  const enc = encodeURIComponent(url);
+
+  const proxies = [
+    {
+      name: 'corsproxy',
+      get: async () => {
+        const r = await fetch(`https://corsproxy.io/?url=${enc}`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.text();
+      },
+    },
+    {
+      name: 'allorigins',
+      get: async () => {
+        const r = await fetch(`https://api.allorigins.win/get?url=${enc}`);
+        const d = await r.json();
+        if (!d.contents) throw new Error('leeg antwoord');
+        return d.contents;
+      },
+    },
+    {
+      name: 'codetabs',
+      get: async () => {
+        const r = await fetch(`https://api.codetabs.com/v1/proxy?quest=${enc}`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.text();
+      },
+    },
+  ];
+
+  for (const proxy of proxies) {
+    try {
+      const text  = await raceTimeout(proxy.get(), 8000);
+      const items = parseRssXml(text, count);
+      if (items.length) return items;
+      console.warn(`[nieuws] ${proxy.name} gaf 0 items voor ${url}`);
+    } catch(e) {
+      console.warn(`[nieuws] ${proxy.name} mislukt voor ${url}: ${e.message}`);
+    }
+  }
+
+  console.error(`[nieuws] Alle proxies mislukt voor ${url}`);
+  return [];
+}
+
+function renderNewsItem(item) {
+  const title = item.title.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return `<a class="news-item" href="${item.link}" target="_blank" rel="noopener noreferrer">
+    <div class="news-title">${title}</div>
+    <div class="news-meta">${relTime(item.pubDate)}</div>
+  </a>`;
+}
+
+async function loadNews() {
+  const el  = document.getElementById('news-content');
+  const now = new Date();
+
+  // Zet skeleton per sectie zodat de layout al zichtbaar is
+  el.innerHTML = FEEDS.map(f => `
+    <div class="news-group-label">${f.label}</div>
+    <div id="news-sec-${f.label.toLowerCase()}">
+      <div class="sk"></div><div class="sk" style="width:85%"></div><div class="sk" style="width:70%"></div>
+    </div>`).join('')
+    + `<div class="news-footer" id="news-footer"></div>`;
+
+  // Laad elke feed onafhankelijk — toon zodra klaar
+  let loaded = 0;
+  await Promise.allSettled(FEEDS.map(async f => {
+    const secEl = document.getElementById(`news-sec-${f.label.toLowerCase()}`);
+    try {
+      const items = await fetchFeed(f.url, f.count);
+      if (items.length && secEl) {
+        secEl.innerHTML = items.map(renderNewsItem).join('');
+      } else if (secEl) {
+        secEl.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:8px 0">Niet beschikbaar</div>`;
+      }
+    } catch {
+      if (secEl) secEl.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:8px 0">Niet beschikbaar</div>`;
+    }
+    loaded++;
+    if (loaded === FEEDS.length) {
+      const footer = document.getElementById('news-footer');
+      if (footer) footer.textContent = `Laatste update: ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    }
+  }));
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  INSTELLINGEN UI
+// ═══════════════════════════════════════════════════════════════
+function openSettings() {
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('s-tomtom').value  = ls.get(K.tomtom,'')  || '';
+  document.getElementById('s-gclient').value = ls.get(K.gclient,'') || '';
+  renderSettingsRoutes();
+  renderSettingsCalStatus();
+  renderLocSettings();
+}
+
+function closeSettings() {
+  document.getElementById('overlay').classList.remove('open');
+}
+
+function onOverlayClick(e) {
+  if (e.target === document.getElementById('overlay')) closeSettings();
+}
+
+// Routes
+function renderSettingsRoutes() {
+  const routes = ls.get(K.routes, DEFAULT_ROUTES);
+  const el     = document.getElementById('s-routes-list');
+  if (!routes.length) {
+    el.innerHTML = `<div style="color:var(--muted);font-size:14px;margin-bottom:10px">Geen routes opgeslagen</div>`;
+    return;
+  }
+  el.innerHTML = routes.map((r,i) => `
+    <div class="route-li">
+      <div>
+        <div class="route-li-name">${r.name}</div>
+        <div class="route-li-sub">${r.from} → ${r.to}</div>
+      </div>
+      <button class="del-btn" onclick="deleteRoute(${i})">✕</button>
+    </div>`).join('');
+}
+
+function deleteRoute(i) {
+  const routes = ls.get(K.routes, DEFAULT_ROUTES);
+  routes.splice(i,1);
+  ls.set(K.routes, routes);
+  renderSettingsRoutes();
+  loadTraffic();
+}
+
+function showAddForm() {
+  document.getElementById('add-form').style.display     = 'block';
+  document.getElementById('add-route-btn').style.display = 'none';
+}
+
+function cancelRoute() {
+  document.getElementById('add-form').style.display     = 'none';
+  document.getElementById('add-route-btn').style.display = 'block';
+  ['r-name','r-from','r-to'].forEach(id => document.getElementById(id).value='');
+}
+
+function saveRoute() {
+  const name = document.getElementById('r-name').value.trim();
+  const from = document.getElementById('r-from').value.trim();
+  const to   = document.getElementById('r-to').value.trim();
+  if (!name||!from||!to) { alert('Vul alle velden in.'); return; }
+  const routes = ls.get(K.routes, DEFAULT_ROUTES);
+  routes.push({ id:'r'+Date.now(), name, from, to });
+  ls.set(K.routes, routes);
+  cancelRoute();
+  renderSettingsRoutes();
+  loadTraffic();
+}
+
+// Google Agenda instellingen
+function renderSettingsCalStatus() {
+  const el  = document.getElementById('s-cal-status');
+  const tok = validToken();
+  if (tok) {
+    el.innerHTML = `
+      <div style="color:var(--green);font-size:14px;margin-bottom:10px">✓ Gekoppeld</div>
+      <button class="btn-danger" onclick="disconnectGoogle()">Ontkoppelen</button>`;
+  } else {
+    el.innerHTML = `
+      <div style="color:var(--muted);font-size:14px;margin-bottom:10px">Niet gekoppeld</div>
+      <button class="btn-primary" onclick="startOAuth()">Koppel Google Agenda</button>`;
+  }
+}
+
+function disconnectGoogle() {
+  ls.set(K.token, null); ls.set(K.tokenExp, 0); ls.set(K.cals, null);
+  renderSettingsCalStatus();
+  document.getElementById('s-cals-wrap').style.display = 'none';
+  loadCalendar();
+}
+
+function renderSettingsCals(cals) {
+  if (!cals?.length) return;
+  const wrap    = document.getElementById('s-cals-wrap');
+  const el      = document.getElementById('s-cals-list');
+  const enabled = ls.get(K.cals, cals.map(c=>c.id));
+  wrap.style.display = 'block';
+  el.innerHTML = cals.map(c => {
+    const on = enabled.includes(c.id);
+    return `<div class="cal-li">
+      <span>${c.summary}</span>
+      <div class="toggle ${on?'on':''}" onclick="toggleCal('${c.id.replace(/'/g,"\\'")}',this)"></div>
+    </div>`;
+  }).join('');
+}
+
+function toggleCal(id, el) {
+  const enabled = ls.get(K.cals,[]) || [];
+  const idx = enabled.indexOf(id);
+  if (idx>-1) enabled.splice(idx,1); else enabled.push(id);
+  ls.set(K.cals, enabled);
+  el.classList.toggle('on');
+  loadCalendar();
+}
+
+// Locatie instellingen
+function renderLocSettings() {
+  const mode = ls.get(K.locMode,'auto');
+  document.getElementById('loc-auto').classList.toggle('active', mode==='auto');
+  document.getElementById('loc-manual').classList.toggle('active', mode==='manual');
+  document.getElementById('loc-manual-wrap').style.display = mode==='manual'?'block':'none';
+  document.getElementById('s-loc').value = ls.get(K.locVal,'') || '';
+}
+
+function setLocMode(mode) {
+  ls.set(K.locMode, mode);
+  renderLocSettings();
+  if (mode==='auto') loadWeather();
+}
+
+function saveLocation() {
+  const v = document.getElementById('s-loc').value.trim();
+  if (v) { ls.set(K.locVal, v); loadWeather(); }
+}
+
+// API keys opslaan
+function saveApiKeys() {
+  const t = document.getElementById('s-tomtom').value.trim();
+  const g = document.getElementById('s-gclient').value.trim();
+  ls.set(K.tomtom,  t || null);
+  ls.set(K.gclient, g || null);
+  loadTraffic();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════════
+(async function init() {
+  // Zet standaardroutes als er nog niets is
+  if (!ls.get(K.routes)) ls.set(K.routes, DEFAULT_ROUTES);
+
+  // Alles parallel laden
+  await Promise.allSettled([
+    loadWeather(),
+    loadTraffic(),
+    loadCalendar(),
+    loadNews(),
+  ]);
+})();
+</script>
+</body>
+</html>
