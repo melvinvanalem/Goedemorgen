@@ -546,6 +546,18 @@
       flex-shrink: 0;
     }
 
+    .btn-primary.saved {
+      background: var(--green);
+      transform: scale(0.98);
+      transition: background .15s, transform .15s;
+    }
+    @keyframes savedPulse {
+      0%   { box-shadow: 0 0 0 0 rgba(16,185,129,0.5); }
+      70%  { box-shadow: 0 0 0 10px rgba(16,185,129,0); }
+      100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+    }
+    .btn-primary.saved { animation: savedPulse .4s ease-out; }
+
     .loc-options { display: flex; gap: 8px; margin-bottom: 13px; }
 
     .loc-opt {
@@ -579,7 +591,7 @@
 </div>
 
 <!-- ── 2. Weer ────────────────────────────────────────────────── -->
-<div class="card">
+<div class="card" id="weather-card">
   <div class="card-label">🌤 Weer</div>
   <div id="weather-content">
     <div class="sk" style="width:55%;height:38px;margin-bottom:10px"></div>
@@ -662,16 +674,18 @@
     <!-- Weerlocatie -->
     <div class="s-section">
       <div class="s-sec-title">Weerlocatie</div>
+      <div id="loc-current" style="font-size:13px;color:var(--muted);margin-bottom:12px"></div>
       <div class="loc-options">
         <div class="loc-opt" id="loc-auto"   onclick="setLocMode('auto')">📍 Automatisch</div>
         <div class="loc-opt" id="loc-manual" onclick="setLocMode('manual')">✏️ Handmatig</div>
       </div>
-      <div id="loc-manual-wrap" style="display:none">
+      <div id="loc-manual-wrap" style="display:none;margin-top:12px">
         <div class="s-field">
-          <label>Stad of coördinaten (lat,lon)</label>
-          <input type="text" class="s-input" id="s-loc" placeholder="bijv. Amsterdam of 52.37,4.90">
+          <label>Stad, adres of coördinaten (lat,lon)</label>
+          <input type="text" class="s-input" id="s-loc" placeholder="bijv. Blombay of 49.73,4.62">
         </div>
         <button class="btn-primary" onclick="saveLocation()">Locatie opslaan</button>
+        <div id="loc-feedback" style="font-size:13px;margin-top:8px;color:var(--muted);min-height:18px"></div>
       </div>
     </div>
 
@@ -874,6 +888,17 @@ async function loadWeather() {
 async function fetchWeather(lat, lon) {
   const el = document.getElementById('weather-content');
   try {
+    // Haal locatienaam op via Nominatim (OpenStreetMap, geen key nodig)
+    let locNaam = '';
+    try {
+      const geo = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=nl`,
+        { headers: { 'Accept-Language': 'nl' } }
+      ).then(r => r.json());
+      const a = geo.address || {};
+      locNaam = a.city || a.town || a.village || a.municipality || a.county || '';
+    } catch {}
+
     const url = `https://api.open-meteo.com/v1/forecast`
       + `?latitude=${lat}&longitude=${lon}`
       + `&current=temperature_2m,apparent_temperature,precipitation_probability,wind_speed_10m,wind_direction_10m,weather_code`
@@ -886,6 +911,10 @@ async function fetchWeather(lat, lon) {
 
     const [desc,  icon]  = wmo(c.weather_code);
     const [ddesc, dicon] = wmo(dy.weather_code[1]);
+
+    // Update het label van de kaart met de locatienaam
+    const cardLabel = document.querySelector('#weather-card .card-label');
+    if (cardLabel) cardLabel.innerHTML = `🌤 Weer${locNaam ? ` <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted);font-size:12px">· 📍 ${locNaam}</span>` : ''}`;
 
     el.innerHTML = `
       <div class="w-main">
@@ -1287,14 +1316,24 @@ function openSettings() {
   renderLocSettings();
 }
 
+function showSaved(btn, label = 'Opslaan') {
+  const orig = btn.textContent;
+  btn.textContent = '✓ Opgeslagen';
+  btn.classList.add('saved');
+  btn.disabled = true;
+  setTimeout(() => {
+    btn.textContent = label || orig;
+    btn.classList.remove('saved');
+    btn.disabled = false;
+  }, 2200);
+}
+
 function saveHomeAddress() {
   const val = document.getElementById('s-home').value.trim();
   if (!val) { alert('Vul je thuisadres in.'); return; }
   ls.set(K.home, val);
   loadTraffic();
-  const btn = event.target;
-  btn.textContent = '✓ Opgeslagen';
-  setTimeout(() => btn.textContent = 'Opslaan', 2000);
+  showSaved(event.target);
 }
 
 function saveWorkAddress() {
@@ -1302,9 +1341,7 @@ function saveWorkAddress() {
   if (!val) { alert('Vul het werkadres in.'); return; }
   ls.set(K.work, val);
   loadTraffic();
-  const btn = event.target;
-  btn.textContent = '✓ Opgeslagen';
-  setTimeout(() => btn.textContent = 'Opslaan', 2000);
+  showSaved(event.target);
 }
 
 // ── Kinderen ───────────────────────────────────────────────────
@@ -1354,9 +1391,8 @@ function saveKind() {
   const kinderen = ls.get(K.kinderen, []);
   kinderen.push({ id: Date.now(), naam, adres, dagen, wanneer });
   ls.set(K.kinderen, kinderen);
-  cancelKind();
-  renderKinderen();
-  loadTraffic();
+  showSaved(event.target);
+  setTimeout(() => { cancelKind(); renderKinderen(); loadTraffic(); }, 800);
 }
 
 function deleteKind(i) {
@@ -1420,9 +1456,8 @@ function saveRoute() {
   const routes = ls.get(K.routes, DEFAULT_ROUTES);
   routes.push({ id:'r'+Date.now(), name, from, to });
   ls.set(K.routes, routes);
-  cancelRoute();
-  renderSettingsRoutes();
-  loadTraffic();
+  showSaved(event.target);
+  setTimeout(() => { cancelRoute(); renderSettingsRoutes(); loadTraffic(); }, 800);
 }
 
 // Google Agenda instellingen
@@ -1473,22 +1508,79 @@ function toggleCal(id, el) {
 
 // Locatie instellingen
 function renderLocSettings() {
-  const mode = ls.get(K.locMode,'auto');
-  document.getElementById('loc-auto').classList.toggle('active', mode==='auto');
-  document.getElementById('loc-manual').classList.toggle('active', mode==='manual');
-  document.getElementById('loc-manual-wrap').style.display = mode==='manual'?'block':'none';
-  document.getElementById('s-loc').value = ls.get(K.locVal,'') || '';
+  const mode    = ls.get(K.locMode, 'auto');
+  const saved   = ls.get(K.locVal, '') || '';
+  const current = document.getElementById('loc-current');
+
+  document.getElementById('loc-auto').classList.toggle('active', mode === 'auto');
+  document.getElementById('loc-manual').classList.toggle('active', mode === 'manual');
+  document.getElementById('loc-manual-wrap').style.display = mode === 'manual' ? 'block' : 'none';
+  document.getElementById('s-loc').value = saved;
+
+  if (current) {
+    if (mode === 'auto') {
+      current.textContent = 'Huidige modus: automatisch via GPS';
+    } else if (saved) {
+      current.textContent = `Huidige locatie: ${saved}`;
+    } else {
+      current.innerHTML = `<span style="color:var(--accent)">Nog geen locatie ingesteld</span>`;
+    }
+  }
 }
 
 function setLocMode(mode) {
   ls.set(K.locMode, mode);
   renderLocSettings();
-  if (mode==='auto') loadWeather();
+  if (mode === 'auto') loadWeather();
 }
 
-function saveLocation() {
-  const v = document.getElementById('s-loc').value.trim();
-  if (v) { ls.set(K.locVal, v); loadWeather(); }
+async function saveLocation() {
+  const v       = document.getElementById('s-loc').value.trim();
+  const fbEl    = document.getElementById('loc-feedback');
+  const btn     = event.target;
+  if (!v) return;
+
+  // Controleer of het coördinaten zijn
+  const parts = v.split(',').map(p => p.trim());
+  if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+    ls.set(K.locVal, v);
+    if (fbEl) fbEl.innerHTML = `<span style="color:var(--green)">✓ Coördinaten opgeslagen</span>`;
+    renderLocSettings();
+    showSaved(btn, 'Locatie opslaan');
+    loadWeather();
+    return;
+  }
+
+  // Geocodeer het adres — probeer meerdere varianten
+  if (fbEl) fbEl.innerHTML = `<span style="color:var(--accent)">Locatie zoeken…</span>`;
+  btn.disabled = true;
+
+  const zoekVarianten = [v];
+  // Voeg verkorte varianten toe: "Blombay, France" → probeer ook alleen "Blombay"
+  const woorden = v.split(/[,\s]+/).filter(Boolean);
+  if (woorden.length > 1) zoekVarianten.push(woorden[0], woorden.slice(-2).join(' '));
+
+  let gevonden = null;
+  for (const term of zoekVarianten) {
+    try {
+      const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(term)}&count=1&language=nl`;
+      const res = await fetch(url).then(r => r.json());
+      if (res.results?.length) { gevonden = res.results[0]; break; }
+    } catch {}
+  }
+
+  btn.disabled = false;
+
+  if (gevonden) {
+    const label = [gevonden.name, gevonden.admin1, gevonden.country].filter(Boolean).join(', ');
+    ls.set(K.locVal, v);
+    if (fbEl) fbEl.innerHTML = `<span style="color:var(--green)">✓ Gevonden: ${label}</span>`;
+    renderLocSettings();
+    showSaved(btn, 'Locatie opslaan');
+    loadWeather();
+  } else {
+    if (fbEl) fbEl.innerHTML = `<span style="color:var(--red)">Locatie niet gevonden. Probeer alleen de plaatsnaam, bijv. "Blombay"</span>`;
+  }
 }
 
 // API keys opslaan
@@ -1498,6 +1590,7 @@ function saveApiKeys() {
   ls.set(K.tomtom,  t || null);
   ls.set(K.gclient, g || null);
   loadTraffic();
+  showSaved(event.target);
 }
 
 // ═══════════════════════════════════════════════════════════════
