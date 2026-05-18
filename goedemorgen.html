@@ -577,6 +577,15 @@
       color: var(--accent);
       font-weight: 600;
     }
+
+    /* ── Hourly weather strip ────────────────────────────────── */
+    .hourly-scroll { display:flex; overflow-x:auto; -webkit-overflow-scrolling:touch; gap:4px; padding:4px 0 8px; scrollbar-width:none; }
+    .hourly-scroll::-webkit-scrollbar { display:none; }
+    .hourly-item { flex:0 0 58px; display:flex; flex-direction:column; align-items:center; gap:3px; padding:6px 4px; border-radius:8px; text-align:center; }
+    .hourly-item .h-time { font-size:11px; color:var(--muted); }
+    .hourly-item .h-icon { font-size:20px; line-height:1; }
+    .hourly-item .h-temp { font-size:13px; font-weight:600; }
+    .hourly-item .h-rain { font-size:11px; color:#60a5fa; min-height:14px; }
   </style>
 </head>
 <body>
@@ -616,6 +625,8 @@
     <div class="sk" style="width:75%"></div>
     <div class="sk" style="width:55%;margin-top:10px"></div>
   </div>
+  <div id="tomorrow-divider" style="display:none;margin:12px -4px 0;border-top:1px dashed rgba(255,255,255,0.1)"></div>
+  <div id="tomorrow-content" style="display:none"></div>
 </div>
 
 <!-- ── 5. Nieuws ──────────────────────────────────────────────── -->
@@ -944,8 +955,10 @@ async function fetchWeather(lat, lon) {
     const url = `https://api.open-meteo.com/v1/forecast`
       + `?latitude=${lat}&longitude=${lon}`
       + `&current=temperature_2m,apparent_temperature,precipitation_probability,wind_speed_10m,wind_direction_10m,weather_code`
+      + `&hourly=temperature_2m,precipitation,weathercode`
       + `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max`
-      + `&timezone=Europe%2FAmsterdam`;
+      + `&timezone=auto`
+      + `&forecast_days=2`;
 
     const d = await fetch(url).then(r=>r.json());
     const c = d.current;
@@ -970,15 +983,62 @@ async function fetchWeather(lat, lon) {
         <div class="w-pill">🌧️ ${c.precipitation_probability ?? 0}%</div>
         <div class="w-pill">💨 ${windDir(c.wind_direction_10m)} ${Math.round(c.wind_speed_10m)} km/u</div>
       </div>
+      <div id="hourly-weather"></div>
       <div class="w-tomorrow">
         <span class="w-tm-label">Morgen</span>
         <span class="w-tm-icon">${dicon}</span>
         <span class="w-tm-info">${ddesc}</span>
         <span class="w-tm-temp">${Math.round(dy.temperature_2m_min[1])}–${Math.round(dy.temperature_2m_max[1])}° · 🌧️${dy.precipitation_probability_max[1]}%</span>
       </div>`;
+    if (d.hourly) renderHourlyWeather(d.hourly);
   } catch {
     el.innerHTML = `<span style="color:var(--muted)">Weerdata niet beschikbaar</span>`;
   }
+}
+
+function renderHourlyWeather(hourly) {
+  const el = document.getElementById('hourly-weather');
+  if (!el || !hourly) return;
+
+  const now     = new Date();
+  const nowHour = now.getHours();
+  const today   = now.toISOString().slice(0, 10);
+
+  // Collect hours: from current hour until midnight, max 12
+  const items = [];
+  for (let i = 0; i < hourly.time.length; i++) {
+    const t = new Date(hourly.time[i]);
+    if (t.toISOString().slice(0,10) !== today) continue;
+    if (t.getHours() < nowHour) continue;
+    if (items.length >= 12) break;
+    items.push({
+      hour:  t.getHours(),
+      temp:  Math.round(hourly.temperature_2m[i]),
+      rain:  hourly.precipitation[i],
+      code:  hourly.weathercode[i],
+      isNow: t.getHours() === nowHour,
+    });
+  }
+  if (!items.length) { el.innerHTML = ''; return; }
+
+  const anyRain = items.some(it => it.rain > 0);
+
+  const html = items.map(it => {
+    const timeLabel = it.isNow ? 'Nu' : `${String(it.hour).padStart(2,'0')}:00`;
+    const isDay     = it.hour >= 6 && it.hour < 21;
+    const highlight = it.isNow ? 'background:rgba(245,158,11,0.12);' : '';
+    const rainHtml  = anyRain
+      ? `<div class="h-rain">${it.rain > 0 ? it.rain.toFixed(1) + 'mm' : ''}</div>`
+      : '';
+    return `<div class="hourly-item" style="${highlight}">
+      <div class="h-time">${timeLabel}</div>
+      <div class="h-icon">${wmo(it.code)[1]}</div>
+      <div class="h-temp">${it.temp}°</div>
+      ${rainHtml}
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `<div class="hourly-scroll">${html}</div>`;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1192,6 +1252,7 @@ async function loadCalendar() {
     if (!events.length) {
       el.innerHTML = `<div style="color:var(--muted);font-size:15px">Geen afspraken vandaag — vrije dag 🙌</div>`;
       renderSettingsCals(allCals);
+      await loadTomorrowAgenda(hdrs, selIds);
       return;
     }
 
@@ -1225,6 +1286,13 @@ async function loadCalendar() {
 
     renderSettingsCals(allCals);
 
+    if (shouldShowTomorrow(events)) {
+      await loadTomorrowAgenda(hdrs, selIds);
+    } else {
+      document.getElementById('tomorrow-divider').style.display = 'none';
+      document.getElementById('tomorrow-content').style.display = 'none';
+    }
+
   } catch(e) {
     if (e.message==='auth') {
       ls.set(K.token, null);
@@ -1233,6 +1301,99 @@ async function loadCalendar() {
       el.innerHTML = `<div style="color:var(--muted);font-size:14px">Agenda niet beschikbaar</div>`;
     }
   }
+}
+
+function shouldShowTomorrow(todayEvents) {
+  const hour = new Date().getHours();
+  if (hour >= 17) return true;
+  if (!todayEvents.length) return true;
+  const now = new Date();
+  return todayEvents.every(ev => new Date(ev.end.dateTime || ev.end.date) <= now);
+}
+
+async function loadTomorrowAgenda(hdrs, selIds) {
+  const divider = document.getElementById('tomorrow-divider');
+  const content = document.getElementById('tomorrow-content');
+  if (!divider || !content) return;
+
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const t0  = new Date(tomorrow); t0.setHours(0,0,0,0);
+  const t24 = new Date(tomorrow); t24.setHours(23,59,59,999);
+
+  try {
+    const fetches = await Promise.allSettled(selIds.map(id =>
+      fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(id)}/events`
+        + `?timeMin=${t0.toISOString()}&timeMax=${t24.toISOString()}`
+        + `&singleEvents=true&orderBy=startTime&maxResults=25`,
+        { headers: hdrs }).then(r => r.json())
+    ));
+
+    let events = [];
+    for (const r of fetches) {
+      if (r.status === 'fulfilled' && r.value.items) events.push(...r.value.items);
+    }
+    events.sort((a,b) => new Date(a.start.dateTime||a.start.date) - new Date(b.start.dateTime||b.start.date));
+
+    if (!events.length) {
+      divider.style.display = 'none';
+      content.style.display = 'none';
+      return;
+    }
+
+    divider.style.display = 'block';
+    content.style.display = 'block';
+    content.dataset.expanded = content.dataset.expanded || '0';
+    _tomorrowEvents = events;
+    renderTomorrowState();
+  } catch {
+    divider.style.display = 'none';
+    content.style.display = 'none';
+  }
+}
+
+function renderTomorrowState() {
+  const el = document.getElementById('tomorrow-content');
+  if (!el) return;
+  const expanded = el.dataset.expanded === '1';
+  const events   = _tomorrowEvents;
+
+  if (expanded) {
+    const allDay = events.filter(ev => !ev.start.dateTime);
+    const timed  = events.filter(ev =>  ev.start.dateTime);
+    const rows   = [...allDay, ...timed].map(ev => {
+      const isAllDay = !ev.start.dateTime;
+      const start    = new Date(ev.start.dateTime || ev.start.date);
+      const end      = new Date(ev.end.dateTime   || ev.end.date);
+      const tStr     = isAllDay ? 'Hele dag'
+        : `${pad(start.getHours())}:${pad(start.getMinutes())} – ${pad(end.getHours())}:${pad(end.getMinutes())}`;
+      return `<div class="ev" style="opacity:0.75">
+        <div class="ev-time">${tStr}</div>
+        <div class="ev-title">${ev.summary || 'Afspraak'}</div>
+        ${ev.location ? `<div class="ev-location">📍 ${ev.location}</div>` : ''}
+      </div>`;
+    }).join('');
+    el.innerHTML = `<div onclick="toggleTomorrow()" style="cursor:pointer;font-size:13px;color:var(--accent);padding:8px 0 4px">morgen ∨</div>${rows}`;
+  } else {
+    const timed = events.filter(ev => ev.start.dateTime);
+    const shown = timed.slice(0, 3);
+    const more  = timed.length - shown.length;
+    const allDayCount = events.filter(ev => !ev.start.dateTime).length;
+    const parts = shown.map(ev => {
+      const t = new Date(ev.start.dateTime);
+      return `${pad(t.getHours())}:${pad(t.getMinutes())} ${ev.summary || 'Afspraak'}`;
+    });
+    if (allDayCount && !shown.length) parts.push(`${allDayCount} hele dag${allDayCount>1?'en':''}`);
+    const moreStr = more > 0 ? ` <span style="color:var(--muted)">en ${more} meer…</span>` : '';
+    el.innerHTML = `<div onclick="toggleTomorrow()" style="cursor:pointer;font-size:13px;color:var(--muted);padding:8px 0">morgen ›  ${parts.join('  ')}${moreStr}</div>`;
+  }
+}
+
+function toggleTomorrow() {
+  const el = document.getElementById('tomorrow-content');
+  if (!el) return;
+  el.dataset.expanded = el.dataset.expanded === '1' ? '0' : '1';
+  renderTomorrowState();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1552,7 +1713,8 @@ function disconnectGoogle() {
   loadCalendar();
 }
 
-let _allCalIds = []; // module-scope cache zodat toggleCal de volledige lijst kent
+let _allCalIds     = []; // module-scope cache zodat toggleCal de volledige lijst kent
+let _tomorrowEvents = [];
 
 function renderSettingsCals(cals) {
   if (!cals?.length) return;
