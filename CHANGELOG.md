@@ -5,6 +5,40 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.5] — 2026-05-18
+
+### Added
+
+#### Hourly weather strip
+- **Horizontal weather strip** — displays hourly forecast from the current hour until
+  midnight, up to 12 hours ahead. Horizontally scrollable with one finger on iPhone.
+- **Current hour highlighted** — subtle amber background (`rgba(245,158,11,0.12)`)
+  on the current time slot for instant orientation.
+- **Conditional precipitation row** — the rain row is only rendered when at least one
+  hour in the strip has > 0mm precipitation. Hidden entirely on dry days.
+- **No new API key required** — extends the existing Open-Meteo request with
+  `hourly=temperature_2m,precipitation,weathercode`, `timezone=auto` and
+  `forecast_days=2`. Reuses the existing `wmo()` function for weather icons.
+
+#### Tomorrow's agenda
+- **Tomorrow block in the calendar card** — shows tomorrow's events below a dashed
+  divider, visible only when relevant: after 17:00, when all of today's events have
+  ended, or when there are no events today.
+- **Collapsed (default)** — compact single line `morgen › 09:00 Title  13:00 Title`
+  showing up to 3 events. When more than 3: `en X meer…` appended.
+- **Expands on tap** — full event list for tomorrow, all-day events first, then
+  sorted by start time. Same styling as today's events at 75% opacity.
+  Tap again to collapse.
+- **No events tomorrow** — block and divider are hidden entirely.
+- **Separate Google Calendar fetch** for tomorrow's date range (00:00–23:59),
+  using the same selected calendars and authorization as today's fetch.
+
+### Changed
+- Open-Meteo API request extended with `hourly` fields, `timezone=auto` and
+  `forecast_days=2` (was `forecast_days=1`).
+
+  ---
+
 ## [1.4.1] — 2026-05-18
 
 ### Fixed
