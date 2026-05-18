@@ -1141,9 +1141,10 @@ async function loadCalendar() {
     const calList = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {headers:hdrs})
       .then(r=>{ if(!r.ok) throw new Error('auth'); return r.json(); });
 
-    const allCals   = calList.items || [];
+    const allCals    = calList.items || [];
     const enabledIds = ls.get(K.cals, null);
-    const selIds     = enabledIds
+    // Treat null én [] beide als "gebruik alle agenda's"
+    const selIds     = (enabledIds && enabledIds.length > 0)
       ? allCals.filter(c=>enabledIds.includes(c.id)).map(c=>c.id)
       : allCals.map(c=>c.id);
 
@@ -1527,11 +1528,16 @@ function disconnectGoogle() {
   loadCalendar();
 }
 
+let _allCalIds = []; // module-scope cache zodat toggleCal de volledige lijst kent
+
 function renderSettingsCals(cals) {
   if (!cals?.length) return;
+  _allCalIds = cals.map(c=>c.id);
   const wrap    = document.getElementById('s-cals-wrap');
   const el      = document.getElementById('s-cals-list');
-  const enabled = ls.get(K.cals, cals.map(c=>c.id));
+  // ls.get geeft null terug als de sleutel als "null" in localStorage staat;
+  // || fallback zorgt dat null en [] beiden als "alles aan" worden behandeld
+  const enabled = ls.get(K.cals, null) || _allCalIds;
   wrap.style.display = 'block';
   el.innerHTML = cals.map(c => {
     const on = enabled.includes(c.id);
@@ -1543,9 +1549,11 @@ function renderSettingsCals(cals) {
 }
 
 function toggleCal(id, el) {
-  const enabled = ls.get(K.cals,[]) || [];
+  // Als K.cals null of leeg is: begin met alle bekende agenda-IDs als startpunt
+  const base    = ls.get(K.cals, null);
+  const enabled = (base && base.length > 0) ? [...base] : [..._allCalIds];
   const idx = enabled.indexOf(id);
-  if (idx>-1) enabled.splice(idx,1); else enabled.push(id);
+  if (idx > -1) enabled.splice(idx, 1); else enabled.push(id);
   ls.set(K.cals, enabled);
   el.classList.toggle('on');
   loadCalendar();
