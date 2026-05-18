@@ -1103,17 +1103,29 @@ async function calcRoute(route, key) {
 //  4. GOOGLE AGENDA  (OAuth 2.0 implicit grant — geen backend)
 // ═══════════════════════════════════════════════════════════════
 
-// Vang OAuth-redirect token op uit URL-hash
+// Vang OAuth-redirect token (of fout) op uit URL-hash
 (function catchToken() {
   const hash = window.location.hash;
-  if (!hash.includes('access_token')) return;
-  const p   = new URLSearchParams(hash.slice(1));
+  if (!hash) return;
+  const p = new URLSearchParams(hash.slice(1));
+
+  if (p.get('error')) {
+    // Stille vernieuwing mislukt (bijv. niet ingelogd bij Google) —
+    // markeer als mislukt zodat init() niet opnieuw probeert te redirecten.
+    sessionStorage.removeItem('gm_silent_pending');
+    sessionStorage.setItem('gm_silent_failed', '1');
+    history.replaceState(null, '', window.location.pathname);
+    return;
+  }
+
   const tok = p.get('access_token');
   const exp = parseInt(p.get('expires_in') || '3600');
   if (tok) {
     ls.set(K.token,    tok);
-    ls.set(K.tokenExp, Date.now() + exp*1000);
-    history.replaceState(null,'',window.location.pathname);
+    ls.set(K.tokenExp, Date.now() + exp * 1000);
+    sessionStorage.removeItem('gm_silent_pending');
+    sessionStorage.removeItem('gm_silent_failed'); // reset bij succes
+    history.replaceState(null, '', window.location.pathname);
   }
 })();
 
@@ -1694,7 +1706,7 @@ function importSettings(event) {
 
 function buildSettingsPayload() {
   return {
-    _version:  '1.2',
+    _version:  '1.3.2',
     _synced:   new Date().toISOString(),
     routes:    ls.get(K.routes,   []),
     home:      ls.get(K.home,     null),
@@ -1832,6 +1844,26 @@ function saveApiKeys() {
   showSaved(event.target);
 }
 
+// Stille OAuth-vernieuwing via volledige redirect met prompt=none.
+// Google geeft direct een nieuw token terug als de gebruiker al ingelogd is —
+// zonder zichtbare interactie. Als dat mislukt komt hij terug met een error-hash
+// die catchToken() opvangt, waarna de normale koppelknop wordt getoond.
+function silentTokenRefresh() {
+  const cid = ls.get(K.gclient, '');
+  if (!cid) return;
+  sessionStorage.setItem('gm_silent_pending', '1');
+  const redirect = encodeURIComponent(location.origin + location.pathname);
+  const scope    = encodeURIComponent('https://www.googleapis.com/auth/calendar.readonly');
+  location.replace(
+    'https://accounts.google.com/o/oauth2/v2/auth'
+    + `?client_id=${encodeURIComponent(cid)}`
+    + `&redirect_uri=${redirect}`
+    + `&response_type=token`
+    + `&scope=${scope}`
+    + `&prompt=none`
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════════════════════
@@ -1845,6 +1877,17 @@ function saveApiKeys() {
       loadFromGist(true),
       new Promise(r => setTimeout(r, 3000)),
     ]);
+  }
+
+  // Token verlopen én client ID bekend én stille vernieuwing nog niet geprobeerd?
+  // → stil vernieuwen via Google redirect (prompt=none). Als de gebruiker al
+  //   ingelogd is bij Google keert de app direct terug met een vers token.
+  if (!validToken()
+      && ls.get(K.gclient)
+      && !sessionStorage.getItem('gm_silent_pending')
+      && !sessionStorage.getItem('gm_silent_failed')) {
+    silentTokenRefresh();
+    return; // redirect vindt plaats, init stopt hier
   }
 
   // Toon melding als thuisadres nog niet ingesteld is
