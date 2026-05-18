@@ -5,6 +5,40 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.4] — 2026-05-18
+
+### Added
+- **Stille OAuth-tokenvernieuwing** — wanneer het Google-token verlopen is, wordt automatisch
+  een stille redirect uitgevoerd naar Google met `prompt=none`. Als de gebruiker al ingelogd
+  is bij Google (standaard op een persoonlijk apparaat), keert de app direct terug met een
+  vers token zonder enige zichtbare interactie.
+- **`silentTokenRefresh()`** — voert de `prompt=none`-redirect uit via `location.replace()`
+  zodat de redirect niet in de browsergeschiedenis terechtkomt.
+- **Loop-beveiliging via `sessionStorage`** — twee vlaggen voorkomen oneindige redirect-loops:
+  - `gm_silent_pending` — gezet vóór de redirect, verwijderd bij terugkeer van Google
+  - `gm_silent_failed` — gezet als Google een fout teruggeeft (bijv. gebruiker niet
+    ingelogd); voorkomt herhaalde pogingen binnen dezelfde sessie. Wordt automatisch
+    gewist bij de volgende app-start (sessionStorage leeft per sessie).
+
+### Changed
+- **`catchToken()` uitgebreid** — verwerkt nu ook de `error`-parameter in de URL-hash
+  die Google teruggeeft bij een mislukte `prompt=none`-aanvraag. Eerder werd alleen
+  `access_token` afgehandeld.
+- **`init()` uitgebreid** — controleert na de Gist-sync of het token verlopen is.
+  Zo ja, en als aan de voorwaarden is voldaan, wordt `silentTokenRefresh()` aangeroepen
+  en stopt `init()` (de redirect neemt het over).
+
+### Behavior
+- **Eerste keer op een nieuw apparaat of homescreen-context** — stille vernieuwing wordt
+  geprobeerd; Google heeft daar nog geen sessie, stuurt een fout terug, de app toont de
+  "Verbind Google Agenda"-knop. Eenmalig koppelen volstaat.
+- **Daarna** — bij elke volgende start vernieuwt de app het token automatisch en onzichtbaar
+  zolang de gebruiker ingelogd is bij Google in dat browser-context (doorgaans maanden).
+- **Geen wijzigingen nodig in Google Cloud Console** — werkt met het bestaande OAuth
+  client ID en redirect URI.
+
+  ---
+
 ## [1.3.2] — 2026-05-18
 
 ### Changed
