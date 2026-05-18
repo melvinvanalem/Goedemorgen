@@ -60,10 +60,6 @@ Bij nieuw device:
 
 ---
 
-**Live:** open via persoonlijke URL met ?token= en ?gist= parameters
-
----
-
 ## Bestanden
 
 | Bestand | Omschrijving |
@@ -76,4 +72,4 @@ Bij nieuw device:
 
 ## Versie
 
-Huidige versie: **1.3** — zie [CHANGELOG.md](CHANGELOG.md) voor alle wijzigingen.
+Huidige versie: **1.4** — zie [CHANGELOG.md](CHANGELOG.md) voor alle wijzigingen.
