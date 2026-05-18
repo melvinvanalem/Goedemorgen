@@ -60,6 +60,10 @@ Bij nieuw device:
 
 ---
 
+**Live:** open via persoonlijke URL met ?token= en ?gist= parameters
+
+---
+
 ## Bestanden
 
 | Bestand | Omschrijving |
