@@ -5,6 +5,25 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.4.1] — 2026-05-18
+
+### Fixed
+- **App blijft laden na Google Agenda koppelen** — `GIST_TOKEN` en `GIST_ID` werden
+  gedeclareerd vóór de `ls` helper (regel 823 vs. regel 841). JavaScript's `const` heeft
+  een temporal dead zone: aanroepen vóór de declaratieregel gooien een `ReferenceError`
+  die het volledige script afbreekt. Gevolg: `catchToken()` en `init()` werden nooit
+  uitgevoerd, waardoor de laadskeletons oneindig bleven staan.
+- **Waarom het alleen na OAuth-redirect crashte** — bij een URL met `?token=` is
+  `_urlToken` truthy; JavaScript evalueert `_urlToken || ls.get(...)` dan via
+  short-circuit en roept `ls.get()` nooit aan. Zonder query-parameter (zoals bij
+  terugkeer van de OAuth-redirect) werd `ls.get()` wél geëvalueerd → crash.
+
+### Changed
+- Gist-credential initialisatie (`_urlParams`, `GIST_TOKEN`, `GIST_ID`) verplaatst
+  naar ná de `ls`-declaratie zodat `ls.get()` veilig aangeroepen kan worden.
+
+  ---
+
 ## [1.4] — 2026-05-18
 
 ### Added
