@@ -5,6 +5,31 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.6] — 2026-05-18
+
+### Added
+- **"Open Outlook agenda" knop** — subtiele knop onderaan de agenda-kaart, onder het
+  vandaag- en morgenblok. Opent `outlook.office.com/calendar/view/day` direct in de
+  dagweergave van vandaag in een nieuw tabblad.
+- **Directe toegang tot werkagenda** — lost het ontbreken van Outlook-synchronisatie
+  praktisch op; oude en terugkerende afspraken zijn direct zichtbaar via één tik.
+- **"Meer nieuws" knop** — onderaan de Nieuws-sectie; opent `https://nos.nl` in een
+  nieuw tabblad.
+- **"Meer tech" knop** — onderaan de Tech-sectie; opent Tweakers in een nieuw tabblad.
+- **"Meer AI" knop** — onderaan de AI-sectie; opent The Decoder in een nieuw tabblad.
+- **Google Maps link in reistijd-kaart** — tikt op de kaart of knop opent Google Maps
+  met de betreffende route direct ingeladen.
+- **Weeronline link in weer-kaart** — subtiele link onderaan de weer-kaart opent
+  `https://weeronline.nl` voor een uitgebreid weersoverzicht.
+
+### Changed
+- Agenda-kaart uitgebreid met een vaste voettekst met de Outlook-knop.
+- Nieuws-, tech- en AI-secties uitgebreid met een voettekst met doorklinklink.
+- Reistijd- en weerkaart uitgebreid met externe links.
+
+
+---
+
 ## [1.5] — 2026-05-18
 
 ### Added
