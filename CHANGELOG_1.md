@@ -5,6 +5,27 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.3.2] — 2026-05-18
+
+### Changed
+- **Gist-credentials opgeslagen in localStorage** — token en Gist ID worden bij de eerste
+  keer laden via `?token=` en `?gist=` direct opgeslagen in `gm_gist_token` en `gm_gist_id`.
+  Bij volgende laadmomenten (refresh, homescreen-shortcut) worden de waarden uit localStorage
+  gelezen zodat de volledige URL niet meer vereist is.
+- **Prioriteitsvolgorde credentials** — URL-parameters hebben altijd voorrang op localStorage;
+  een nieuwe URL overschrijft bestaande opgeslagen waarden.
+
+### Added
+- **Gist ID-weergave in instellingen** — toont het actieve Gist ID gemaskeerd
+  (`••••••<laatste 6 tekens>`) wanneer sync actief is.
+- **"Ontkoppelen" knop** — verwijdert `gm_gist_token` en `gm_gist_id` uit localStorage
+  en herlaadt de pagina; zichtbaar alleen wanneer sync actief is.
+- `K.gist` (`gm_gist_token`) en `K.gistId` (`gm_gist_id`) teruggezet in het `K`-object
+  nu deze sleutels weer in localStorage worden opgeslagen.
+- `disconnectGist()` toegevoegd als functie voor de ontkoppelactie.
+
+---
+
 ## [1.3.1] — 2026-05-18
 
 ### Fixed
