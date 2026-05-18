@@ -813,16 +813,6 @@ const SYNC_KEYS = new Set([
 ]);
 let skipGistSync = false; // voorkomt recursieve sync-loop bij applySettings()
 
-// Gist-credentials: URL-params hebben prioriteit; daarna localStorage als fallback.
-// Bij aanwezigheid in de URL worden ze meteen opgeslagen voor gebruik na refresh.
-const _urlParams = new URLSearchParams(window.location.search);
-const _urlToken  = _urlParams.get('token') || null;
-const _urlGistId = _urlParams.get('gist')  || null;
-if (_urlToken)  { try { localStorage.setItem(K.gist,   JSON.stringify(_urlToken));  } catch {} }
-if (_urlGistId) { try { localStorage.setItem(K.gistId, JSON.stringify(_urlGistId)); } catch {} }
-const GIST_TOKEN = _urlToken  || ls.get(K.gist,   null);
-const GIST_ID    = _urlGistId || ls.get(K.gistId, null);
-
 const DEFAULT_ROUTES = [
   { id:'r1', name:'Naar werk (Houten)',     from:'__home__', to:'Pakketboot 57, Houten' },
   { id:'r2', name:'Naar kantoor (Capelle)', from:'__home__', to:'Elandstraat 120, Capelle aan den IJssel' },
@@ -847,6 +837,16 @@ const ls = {
     if (!skipGistSync && SYNC_KEYS.has(k)) debouncedGistSync();
   },
 };
+
+// Gist-credentials: URL-params hebben prioriteit; daarna localStorage als fallback.
+// Staan hier ná ls zodat ls.get() veilig gebruikt kan worden.
+const _urlParams = new URLSearchParams(window.location.search);
+const _urlToken  = _urlParams.get('token') || null;
+const _urlGistId = _urlParams.get('gist')  || null;
+if (_urlToken)  { try { localStorage.setItem(K.gist,   JSON.stringify(_urlToken));  } catch {} }
+if (_urlGistId) { try { localStorage.setItem(K.gistId, JSON.stringify(_urlGistId)); } catch {} }
+const GIST_TOKEN = _urlToken  || ls.get(K.gist,   null);
+const GIST_ID    = _urlGistId || ls.get(K.gistId, null);
 
 const pad = n => String(n).padStart(2,'0');
 
