@@ -5,6 +5,30 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.6.1] — 2026-05-18
+
+### Changed
+- **External links now use iOS URL schemes** — all app links have been updated from
+  `https://` URLs to native URL schemes so iOS opens the installed app directly instead
+  of Safari. No re-login required.
+
+| Link | Before | After |
+|---|---|---|
+| Open Weeronline → | `https://www.weeronline.nl` | `weeronline://` |
+| Open Google Maps → | `https://maps.google.com` | `comgooglemaps://` |
+| Open Outlook agenda → | `https://outlook.office.com/calendar/view/day` | `ms-outlook://` |
+| meer nieuws → | `https://nos.nl` | `nosapp://` |
+
+- **`target="_blank"` removed** from app-scheme links — URL scheme links navigate
+  directly to the native app and do not require a new browser tab.
+
+### Notes
+- **meer tech →** (`https://tweakers.net`) and **meer ai →**
+  (`https://the-decoder.com`) remain as `https://` links — these are web-only
+  publications with no native iOS app.
+
+  ---
+
 ## [1.6] — 2026-05-18
 
 ### Added
