@@ -5,6 +5,31 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.3.1] — 2026-05-18
+
+### Fixed
+- **Agenda niet beschikbaar na Gist-sync** — `renderSettingsCals` crashte wanneer
+  `gm_gcal_cals` als `"null"` in localStorage stond (gezet door Gist-sync). `ls.get()`
+  retourneert in dat geval `null` in plaats van de fallback, waarna `null.includes()`
+  een TypeError gooide. De catch-block ving dit op en overschreef de agenda-content
+  met "Agenda niet beschikbaar" — ook als er wél afspraken waren. Opgelost met een
+  expliciete `|| _allCalIds` fallback.
+- **Verkeerd toggle-gedrag bij onaangeroerde agendakeuze** — `toggleCal` startte
+  altijd met een lege array als `K.cals` `null` was. Omdat alle agenda's dan visueel
+  aangevinkt leken maar de interne array leeg was, voegde de eerste klik een agenda toe
+  i.p.v. te verwijderen; de tweede klik maakte de array leeg (`[]`). Resultaat: na twee
+  kliks werden er geen agenda-IDs meer meegestuurd naar de API. Opgelost door te starten
+  vanuit `_allCalIds` (module-scope cache) als `K.cals` leeg of null is.
+- **Lege agenda-selectie toonde geen afspraken** — `selIds = []` resulteerde in nul
+  API-calls, waardoor "Geen afspraken vandaag" verscheen ook al waren er afspraken.
+  Opgelost door een lege array gelijk te behandelen aan `null` (gebruik alle agenda's).
+
+### Changed
+- `_allCalIds` toegevoegd als module-scope variabele; wordt gevuld door
+  `renderSettingsCals` zodat `toggleCal` altijd de volledige lijst kent.
+
+---
+
 ## [1.3] — 2026-05-18
 
 ### Added
