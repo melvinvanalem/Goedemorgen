@@ -762,8 +762,10 @@
     <div class="s-section">
       <div class="s-sec-title">Sync instellingen (GitHub Gist)</div>
       <div id="gist-url-notice" style="font-size:13px;margin-bottom:12px;line-height:1.5"></div>
+      <div id="gist-id-display" style="font-size:13px;color:var(--muted);margin-bottom:12px"></div>
       <button class="btn-secondary" onclick="saveToGist(false)" style="margin-bottom:8px">☁️ Opslaan naar Gist</button>
-      <button class="btn-secondary" onclick="loadFromGist(false)">⬇️ Laden vanaf Gist</button>
+      <button class="btn-secondary" onclick="loadFromGist(false)" style="margin-bottom:8px">⬇️ Laden vanaf Gist</button>
+      <button class="btn-secondary" id="gist-disconnect-btn" onclick="disconnectGist()" style="display:none;color:var(--red)">✕ Ontkoppelen</button>
       <div id="gist-status" style="font-size:13px;margin-top:10px;min-height:18px"></div>
     </div>
 
@@ -800,6 +802,8 @@ const K = {
   locVal:   'gm_loc_val',
   tomtom:   'gm_tomtom_key',
   gclient:  'gm_gclient_id',
+  gist:     'gm_gist_token',
+  gistId:   'gm_gist_id',
 };
 
 // Sleutels die een auto-sync naar Gist triggeren (geen OAuth-tokens, geen Gist-credentials)
@@ -809,10 +813,15 @@ const SYNC_KEYS = new Set([
 ]);
 let skipGistSync = false; // voorkomt recursieve sync-loop bij applySettings()
 
-// Gist-credentials worden uitsluitend uit de URL gelezen — nooit opgeslagen
-const _urlParams  = new URLSearchParams(window.location.search);
-const GIST_TOKEN  = _urlParams.get('token') || null;
-const GIST_ID     = _urlParams.get('gist')  || null;
+// Gist-credentials: URL-params hebben prioriteit; daarna localStorage als fallback.
+// Bij aanwezigheid in de URL worden ze meteen opgeslagen voor gebruik na refresh.
+const _urlParams = new URLSearchParams(window.location.search);
+const _urlToken  = _urlParams.get('token') || null;
+const _urlGistId = _urlParams.get('gist')  || null;
+if (_urlToken)  { try { localStorage.setItem(K.gist,   JSON.stringify(_urlToken));  } catch {} }
+if (_urlGistId) { try { localStorage.setItem(K.gistId, JSON.stringify(_urlGistId)); } catch {} }
+const GIST_TOKEN = _urlToken  || ls.get(K.gist,   null);
+const GIST_ID    = _urlGistId || ls.get(K.gistId, null);
 
 const DEFAULT_ROUTES = [
   { id:'r1', name:'Naar werk (Houten)',     from:'__home__', to:'Pakketboot 57, Houten' },
@@ -1344,16 +1353,19 @@ function openSettings() {
   document.getElementById('s-work').value       = ls.get(K.work,'')    || '';
   document.getElementById('s-tomtom').value     = ls.get(K.tomtom,'')  || '';
   document.getElementById('s-gclient').value    = ls.get(K.gclient,'') || '';
-  // Gist URL-status tonen
-  const noticeEl = document.getElementById('gist-url-notice');
+  // Gist-status tonen
+  const noticeEl  = document.getElementById('gist-url-notice');
+  const idDisplay = document.getElementById('gist-id-display');
+  const discBtn   = document.getElementById('gist-disconnect-btn');
   if (noticeEl) {
     if (GIST_TOKEN && GIST_ID) {
-      noticeEl.innerHTML = `<span style="color:var(--green)">✓ Gist sync actief — token en Gist ID zijn geladen via de URL.</span>`;
+      noticeEl.innerHTML = `<span style="color:var(--green)">✓ Gist sync actief</span>`;
+      if (idDisplay) idDisplay.textContent = `Gist ID: ••••••${GIST_ID.slice(-6)}`;
+      if (discBtn)   discBtn.style.display = '';
     } else {
-      const missing = [];
-      if (!GIST_TOKEN) missing.push('<code>?token=</code>');
-      if (!GIST_ID)    missing.push('<code>?gist=</code>');
-      noticeEl.innerHTML = `<span style="color:var(--accent)">⚠️ Gist sync staat uit. Voeg ${missing.join(' en ')} toe aan de URL om sync in te schakelen.</span>`;
+      noticeEl.innerHTML = `<span style="color:var(--accent)">⚠️ Gist sync staat uit — open de app via de URL met <code>?token=</code> en <code>?gist=</code> om sync in te schakelen.</span>`;
+      if (idDisplay) idDisplay.textContent = '';
+      if (discBtn)   discBtn.style.display = 'none';
     }
   }
   renderKinderen();
@@ -1730,6 +1742,13 @@ function gistHeaders(token) {
     'X-GitHub-Api-Version': '2022-11-28',
     'Content-Type':         'application/json',
   };
+}
+
+function disconnectGist() {
+  try { localStorage.removeItem(K.gist); localStorage.removeItem(K.gistId); } catch {}
+  // Herlaad de pagina zonder URL-params zodat de constanten opnieuw worden ingesteld
+  const clean = location.origin + location.pathname;
+  location.replace(clean);
 }
 
 async function saveToGist(silent = false) {
