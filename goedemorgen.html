@@ -758,6 +758,24 @@
       <button class="btn-secondary" id="add-route-btn" onclick="showAddForm()">+ Route toevoegen</button>
     </div>
 
+    <!-- Gist Sync -->
+    <div class="s-section">
+      <div class="s-sec-title">Sync instellingen (GitHub Gist)</div>
+      <div id="gist-url-notice" style="font-size:13px;margin-bottom:12px;line-height:1.5"></div>
+      <button class="btn-secondary" onclick="saveToGist(false)" style="margin-bottom:8px">☁️ Opslaan naar Gist</button>
+      <button class="btn-secondary" onclick="loadFromGist(false)">⬇️ Laden vanaf Gist</button>
+      <div id="gist-status" style="font-size:13px;margin-top:10px;min-height:18px"></div>
+    </div>
+
+    <!-- Export / Import -->
+    <div class="s-section">
+      <div class="s-sec-title">Instellingen back-up</div>
+      <button class="btn-secondary" onclick="exportSettings()" style="margin-top:0">⬇️ Exporteer instellingen</button>
+      <button class="btn-secondary" onclick="document.getElementById('import-file').click()">⬆️ Importeer instellingen</button>
+      <input type="file" id="import-file" accept=".json" style="display:none" onchange="importSettings(event)">
+      <div id="import-feedback" style="font-size:13px;margin-top:10px;min-height:18px"></div>
+    </div>
+
     <!-- Sluiten -->
     <div class="s-section">
       <button class="btn-secondary" onclick="closeSettings()">Sluiten</button>
@@ -784,6 +802,18 @@ const K = {
   gclient:  'gm_gclient_id',
 };
 
+// Sleutels die een auto-sync naar Gist triggeren (geen OAuth-tokens, geen Gist-credentials)
+const SYNC_KEYS = new Set([
+  'gm_routes','gm_home_address','gm_work_address','gm_kinderen',
+  'gm_loc_mode','gm_loc_val','gm_gcal_cals','gm_tomtom_key','gm_gclient_id',
+]);
+let skipGistSync = false; // voorkomt recursieve sync-loop bij applySettings()
+
+// Gist-credentials worden uitsluitend uit de URL gelezen — nooit opgeslagen
+const _urlParams  = new URLSearchParams(window.location.search);
+const GIST_TOKEN  = _urlParams.get('token') || null;
+const GIST_ID     = _urlParams.get('gist')  || null;
+
 const DEFAULT_ROUTES = [
   { id:'r1', name:'Naar werk (Houten)',     from:'__home__', to:'Pakketboot 57, Houten' },
   { id:'r2', name:'Naar kantoor (Capelle)', from:'__home__', to:'Elandstraat 120, Capelle aan den IJssel' },
@@ -803,7 +833,10 @@ const ls = {
   get(k, fb=null) {
     try { const v = localStorage.getItem(k); return v===null ? fb : JSON.parse(v); } catch { return fb; }
   },
-  set(k,v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  set(k,v) {
+    try { localStorage.setItem(k, JSON.stringify(v)); } catch {}
+    if (!skipGistSync && SYNC_KEYS.has(k)) debouncedGistSync();
+  },
 };
 
 const pad = n => String(n).padStart(2,'0');
@@ -1306,10 +1339,22 @@ async function loadNews() {
 // ═══════════════════════════════════════════════════════════════
 function openSettings() {
   document.getElementById('overlay').classList.add('open');
-  document.getElementById('s-home').value    = ls.get(K.home,'')    || '';
-  document.getElementById('s-work').value    = ls.get(K.work,'')    || '';
-  document.getElementById('s-tomtom').value  = ls.get(K.tomtom,'')  || '';
-  document.getElementById('s-gclient').value = ls.get(K.gclient,'') || '';
+  document.getElementById('s-home').value       = ls.get(K.home,'')    || '';
+  document.getElementById('s-work').value       = ls.get(K.work,'')    || '';
+  document.getElementById('s-tomtom').value     = ls.get(K.tomtom,'')  || '';
+  document.getElementById('s-gclient').value    = ls.get(K.gclient,'') || '';
+  // Gist URL-status tonen
+  const noticeEl = document.getElementById('gist-url-notice');
+  if (noticeEl) {
+    if (GIST_TOKEN && GIST_ID) {
+      noticeEl.innerHTML = `<span style="color:var(--green)">✓ Gist sync actief — token en Gist ID zijn geladen via de URL.</span>`;
+    } else {
+      const missing = [];
+      if (!GIST_TOKEN) missing.push('<code>?token=</code>');
+      if (!GIST_ID)    missing.push('<code>?gist=</code>');
+      noticeEl.innerHTML = `<span style="color:var(--accent)">⚠️ Gist sync staat uit. Voeg ${missing.join(' en ')} toe aan de URL om sync in te schakelen.</span>`;
+    }
+  }
   renderKinderen();
   renderSettingsRoutes();
   renderSettingsCalStatus();
@@ -1583,6 +1628,173 @@ async function saveLocation() {
   }
 }
 
+// ── Export / Import ────────────────────────────────────────────
+function exportSettings() {
+  const data = { ...buildSettingsPayload(), _exported: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = 'goedemorgen-instellingen.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function importSettings(event) {
+  const file = event.target.files[0];
+  const fbEl = document.getElementById('import-feedback');
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      applySettings(data);
+      openSettings();
+
+      if (fbEl) {
+        fbEl.innerHTML = `<span style="color:var(--green)">✓ Instellingen geladen — verbind Google Agenda opnieuw om agenda's te zien</span>`;
+        setTimeout(() => { if (fbEl) fbEl.textContent = ''; }, 6000);
+      }
+
+      // Herlaad dashboard met nieuwe instellingen
+      loadWeather();
+      loadTraffic();
+
+    } catch {
+      if (fbEl) fbEl.innerHTML = `<span style="color:var(--red)">Ongeldig bestand — gebruik een eerder geëxporteerd goedemorgen-instellingen.json</span>`;
+    }
+
+    // Reset file input zodat hetzelfde bestand opnieuw geïmporteerd kan worden
+    event.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+// ── Gist sync ─────────────────────────────────────────────────
+
+function buildSettingsPayload() {
+  return {
+    _version:  '1.2',
+    _synced:   new Date().toISOString(),
+    routes:    ls.get(K.routes,   []),
+    home:      ls.get(K.home,     null),
+    work:      ls.get(K.work,     null),
+    kinderen:  ls.get(K.kinderen, []),
+    locMode:   ls.get(K.locMode,  'auto'),
+    locVal:    ls.get(K.locVal,   null),
+    calendars: ls.get(K.cals,     null),
+    tomtom:    ls.get(K.tomtom,   null),
+    gclient:   ls.get(K.gclient,  null),
+  };
+}
+
+function applySettings(data) {
+  skipGistSync = true;
+  if (data.routes    !== undefined) ls.set(K.routes,   data.routes);
+  if (data.home      !== undefined) ls.set(K.home,     data.home);
+  if (data.work      !== undefined) ls.set(K.work,     data.work);
+  if (data.kinderen  !== undefined) ls.set(K.kinderen, data.kinderen);
+  if (data.locMode   !== undefined) ls.set(K.locMode,  data.locMode);
+  if (data.locVal    !== undefined) ls.set(K.locVal,   data.locVal);
+  if (data.calendars !== undefined) ls.set(K.cals,     data.calendars);
+  if (data.tomtom    !== undefined) ls.set(K.tomtom,   data.tomtom);
+  if (data.gclient   !== undefined) ls.set(K.gclient,  data.gclient);
+  skipGistSync = false;
+}
+
+let _gistTimer = null;
+function debouncedGistSync() {
+  if (_gistTimer) clearTimeout(_gistTimer);
+  _gistTimer = setTimeout(() => saveToGist(true), 2000);
+}
+
+const GIST_ERRORS = {
+  token_invalid:  'Ongeldige GitHub token — controleer je Personal Access Token',
+  gist_not_found: 'Gist niet gevonden — controleer het Gist ID',
+  file_not_found: 'Geen instellingenbestand gevonden in deze Gist',
+  api_error:      'Gist niet bereikbaar — instellingen zijn lokaal opgeslagen',
+};
+
+function gistHeaders(token) {
+  return {
+    'Authorization':        `Bearer ${token}`,
+    'Accept':               'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+    'Content-Type':         'application/json',
+  };
+}
+
+async function saveToGist(silent = false) {
+  const token  = GIST_TOKEN;
+  const gistId = GIST_ID;
+  if (!token || !gistId) return;
+
+  const statusEl = document.getElementById('gist-status');
+  if (!silent && statusEl) statusEl.innerHTML = `<span style="color:var(--accent)">Opslaan naar Gist…</span>`;
+
+  try {
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      method:  'PATCH',
+      headers: gistHeaders(token),
+      body:    JSON.stringify({
+        files: { 'goedemorgen-settings.json': { content: JSON.stringify(buildSettingsPayload(), null, 2) } }
+      }),
+    });
+
+    if (res.status === 401) throw new Error('token_invalid');
+    if (res.status === 404) throw new Error('gist_not_found');
+    if (!res.ok)            throw new Error('api_error');
+
+    if (!silent && statusEl) {
+      statusEl.innerHTML = `<span style="color:var(--green)">✓ Opgeslagen naar Gist</span>`;
+      setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 4000);
+    }
+  } catch(e) {
+    if (silent) return;
+    if (statusEl) statusEl.innerHTML =
+      `<span style="color:var(--red)">${GIST_ERRORS[e.message] || GIST_ERRORS.api_error}</span>`;
+  }
+}
+
+async function loadFromGist(silent = false) {
+  const token  = GIST_TOKEN;
+  const gistId = GIST_ID;
+  if (!token || !gistId) return;
+
+  const statusEl = document.getElementById('gist-status');
+  if (!silent && statusEl) statusEl.innerHTML = `<span style="color:var(--accent)">Laden vanaf Gist…</span>`;
+
+  try {
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      headers: gistHeaders(token),
+    });
+
+    if (res.status === 401) throw new Error('token_invalid');
+    if (res.status === 404) throw new Error('gist_not_found');
+    if (!res.ok)            throw new Error('api_error');
+
+    const gist = await res.json();
+    const file = gist.files?.['goedemorgen-settings.json'];
+    if (!file?.content) throw new Error('file_not_found');
+
+    applySettings(JSON.parse(file.content));
+
+    if (!silent) {
+      if (statusEl) {
+        statusEl.innerHTML = `<span style="color:var(--green)">✓ Instellingen geladen — verbind Google Agenda opnieuw om agenda's te zien</span>`;
+        setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 6000);
+      }
+      openSettings();
+      loadWeather();
+      loadTraffic();
+    }
+  } catch(e) {
+    if (silent) return;
+    if (statusEl) statusEl.innerHTML =
+      `<span style="color:var(--red)">${GIST_ERRORS[e.message] || GIST_ERRORS.api_error}</span>`;
+  }
+}
+
 // API keys opslaan
 function saveApiKeys() {
   const t = document.getElementById('s-tomtom').value.trim();
@@ -1599,6 +1811,14 @@ function saveApiKeys() {
 (async function init() {
   // Zet standaardroutes als er nog niets is
   if (!ls.get(K.routes)) ls.set(K.routes, DEFAULT_ROUTES);
+
+  // Auto-load vanaf Gist bij opstarten (stil, max 3 seconden)
+  if (GIST_TOKEN && GIST_ID) {
+    await Promise.race([
+      loadFromGist(true),
+      new Promise(r => setTimeout(r, 3000)),
+    ]);
+  }
 
   // Toon melding als thuisadres nog niet ingesteld is
   if (!ls.get(K.home)) {
