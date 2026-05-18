@@ -72,4 +72,4 @@ Bij nieuw device:
 
 ## Versie
 
-Huidige versie: **1.4** — zie [CHANGELOG.md](CHANGELOG.md) voor alle wijzigingen.
+Huidige versie: **1.5** — zie [CHANGELOG.md](CHANGELOG.md) voor alle wijzigingen.
