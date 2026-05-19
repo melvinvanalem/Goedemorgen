@@ -139,7 +139,7 @@
       letter-spacing: 0.01em;
     }
 
-    .settings-btn {
+    .settings-btn, .refresh-btn {
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 13px;
@@ -153,7 +153,18 @@
       -webkit-tap-highlight-color: transparent;
       flex-shrink: 0;
       margin-top: 6px;
+      color: var(--text);
     }
+
+    .header-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .refresh-btn[disabled] { opacity: 0.5; pointer-events: none; }
+    .refresh-btn .icn { display: inline-block; transition: transform 0.6s ease; }
+    .refresh-btn.spinning .icn { animation: spin 0.8s linear infinite; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
     /* ── 2. Weer ─────────────────────────────────────────────── */
     .w-main {
@@ -596,13 +607,16 @@
 </head>
 <body>
 
-<!-- ── Header: klok + settings ───────────────────────────────── -->
+<!-- ── Header: klok + acties ─────────────────────────────────── -->
 <div class="app-header">
   <div>
     <div id="clock">--:--</div>
     <div id="date-label">Laden...</div>
   </div>
-  <button class="settings-btn" onclick="openSettings()" aria-label="Instellingen">⚙️</button>
+  <div class="header-actions">
+    <button id="refresh-btn" class="refresh-btn" onclick="refreshAll()" aria-label="Vernieuwen"><span class="icn">↻</span></button>
+    <button class="settings-btn" onclick="openSettings()" aria-label="Instellingen">⚙️</button>
+  </div>
 </div>
 
 <!-- ── 2. Weer ────────────────────────────────────────────────── -->
@@ -1198,19 +1212,22 @@ async function geocode(address, key) {
   return p;
 }
 
-// Eén retry met korte backoff bij netwerkflapper of 429 rate-limit van TomTom.
-async function fetchJsonWithRetry(url, retries = 1) {
+// Twee retries met exponentiële backoff (400ms, 1200ms) bij 429 rate-limit
+// of 5xx-errors van TomTom. Andere HTTP-fouten worden direct doorgegeven.
+async function fetchJsonWithRetry(url, retries = 2) {
+  let lastErr;
   for (let i = 0; i <= retries; i++) {
     try {
       const r = await fetch(url);
       if (r.ok) return r.json();
       if (r.status !== 429 && r.status < 500) throw new Error(`HTTP ${r.status}`);
+      lastErr = new Error(`HTTP ${r.status}`);
     } catch (e) {
-      if (i === retries) throw e;
+      lastErr = e;
     }
-    await new Promise(res => setTimeout(res, 400));
+    if (i < retries) await new Promise(res => setTimeout(res, 400 * Math.pow(3, i)));
   }
-  throw new Error('fetch failed');
+  throw lastErr || new Error('fetch failed');
 }
 
 async function calcRoute(route, key) {
@@ -1219,16 +1236,19 @@ async function calcRoute(route, key) {
       geocode(route.from, key),
       geocode(route.to,   key),
     ]);
-    const base = `https://api.tomtom.com/routing/1/calculateRoute`
-      + `/${from.lat},${from.lon}:${to.lat},${to.lon}/json?key=${key}&travelMode=car`;
+    // computeTravelTimeFor=all geeft zowel travelTimeInSeconds (met verkeer)
+    // als noTrafficTravelTimeInSeconds (zonder) terug in één response — halveert
+    // het aantal routing-calls en verlaagt de kans op TomTom rate-limiting.
+    const url = `https://api.tomtom.com/routing/1/calculateRoute`
+      + `/${from.lat},${from.lon}:${to.lat},${to.lon}/json?key=${key}`
+      + `&travelMode=car&traffic=true&computeTravelTimeFor=all`;
 
-    const [withT, noT] = await Promise.all([
-      fetchJsonWithRetry(base + '&traffic=true'),
-      fetchJsonWithRetry(base + '&traffic=false'),
-    ]);
+    const data       = await fetchJsonWithRetry(url);
+    const summary    = data.routes?.[0]?.summary;
+    if (!summary) throw new Error('Geen route-data');
 
-    const mins       = Math.round(withT.routes[0].summary.travelTimeInSeconds / 60);
-    const normalMins = Math.round(noT.routes[0].summary.travelTimeInSeconds   / 60);
+    const mins       = Math.round(summary.travelTimeInSeconds / 60);
+    const normalMins = Math.round((summary.noTrafficTravelTimeInSeconds ?? summary.travelTimeInSeconds) / 60);
     return { mins, normalMins };
   } catch { return null; }
 }
@@ -2131,6 +2151,33 @@ function silentTokenRefresh() {
     + `&scope=${scope}`
     + `&prompt=none`
   );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  REFRESH — handmatige vernieuwing via knop in header
+// ═══════════════════════════════════════════════════════════════
+// iOS standalone webapps ondersteunen pull-to-refresh niet betrouwbaar.
+// Deze knop herlaadt alle dashboard-secties parallel met een spinner-icoon
+// als visuele feedback. Locatie wordt verfrist bij modus 'auto'.
+async function refreshAll() {
+  const btn = document.getElementById('refresh-btn');
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  btn.classList.add('spinning');
+  try {
+    await Promise.allSettled([
+      loadWeather(),
+      loadTraffic(),
+      loadCalendar(),
+      loadNews(),
+    ]);
+  } finally {
+    // Minimum 600ms spinner zodat de feedback zichtbaar is bij snelle responses
+    setTimeout(() => {
+      btn.classList.remove('spinning');
+      btn.disabled = false;
+    }, 600);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
