@@ -1287,16 +1287,28 @@ async function calcRoute(route, key) {
 // (maar nog niet verlopen) Gist-token het verse OAuth-token overschrijven.
 let _justOAuthedThisLoad = false;
 
-// iOS Safari BFCache fix (sinds 1.6.10): wanneer Safari de pagina uit
-// Back-Forward Cache restaureert NA een OAuth-redirect, draaien scripts
-// (inclusief catchToken) NIET opnieuw. De hash krijgt wel de nieuwe
-// access_token= maar niets verwerkt 'm — de app blijft daardoor hangen
-// op het oude (verlopen) token. Detecteer BFCache via pageshow.persisted
-// en forceer een fresh load zodat catchToken alsnog uitvoert.
-window.addEventListener('pageshow', (event) => {
-  if (event.persisted && /access_token=|[?&#]error=/.test(window.location.hash)) {
+// iOS Safari OAuth-return fix (1.6.10 → uitgebreid in 1.6.11): Safari kan
+// de pagina na een OAuth-redirect op drie manieren weer presenteren zonder
+// scripts opnieuw te draaien:
+//   1. pageshow met persisted=true   → restore uit BFCache
+//   2. hashchange                    → behandelt return als enkel een hash-update
+//   3. visibilitychange (visible)    → tab komt terug zonder reload
+// catchToken() draait dan niet, het verse access_token blijft onverwerkt
+// in de URL en de app draait door met het oude (verlopen) token.
+// We vangen alle drie events af; de reload triggert een verse script-eval
+// waarna catchToken() het token wel netjes uit de hash plukt. De regex-guard
+// voorkomt reloads als de hash niets met OAuth te maken heeft.
+function _reloadIfOAuthHashPresent() {
+  if (/access_token=|[?&#]error=/.test(window.location.hash)) {
     window.location.reload();
   }
+}
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) _reloadIfOAuthHashPresent();
+});
+window.addEventListener('hashchange', _reloadIfOAuthHashPresent);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') _reloadIfOAuthHashPresent();
 });
 
 // Vang OAuth-redirect token (of fout) op uit URL-hash
