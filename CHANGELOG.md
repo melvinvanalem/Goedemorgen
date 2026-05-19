@@ -5,6 +5,34 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.6.14] — 2026-05-19
+
+### Fixed
+- **1.6.13 brak de hele app als de URL een rare hash bevatte** — door
+  `catchToken` om te zetten van IIFE naar gewone functie + expliciete
+  aanroep op regel 1350, kon een interne fout in die functie (bijv.
+  `decodeURIComponent` op een rare karakter, of `sessionStorage` quota
+  in iOS Safari) de hele script-evaluatie afbreken. Alle definities
+  daarna (`init()`, `openSettings()`, `loadCalendar()`, `loadNews()`,
+  `refreshDiag()` …) werden daardoor nooit geregistreerd:
+  - Nieuws laadde niet (geen `init()` → geen `loadNews()`)
+  - ⚙️ klikken deed niets (`openSettings` undefined)
+  - Diagnose-paneel werkte niet (`refreshDiag` undefined)
+  - Agenda bleef hangen (`loadCalendar` undefined)
+  
+  Opgelost door `catchToken()` van top tot teen kogelvrij te maken:
+  - Hele functie-body in een top-level `try { } catch {}`
+  - Elke individuele `sessionStorage`-call en `history.replaceState`-call
+    ook in eigen `try {} catch {}` zodat één Safari-quirk de rest niet
+    afbreekt
+  - `decodeURIComponent()` met een fallback op de rauwe waarde als de
+    decode faalt
+  
+  Wat er ook intern misgaat in catchToken — de functie retourneert nu
+  altijd `false` en het script loopt door. Geen propagerende crashes meer.
+
+---
+
 ## [1.6.13] — 2026-05-19
 
 ### Fixed
