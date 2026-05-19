@@ -5,28 +5,6 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-Klaar — 1.6.5 verwerkt beide issues.
-
-### Wat is er veranderd
-
-| Probleem | Fix |
-|---|---|
-| Pull-to-refresh werkt niet in iOS webapp | **`↻` refresh-knop** in de header, met spinner-feedback en gedisabled tijdens het laden |
-| Routes nog steeds soms "Niet beschikbaar" | **75% minder TomTom-calls per route** (van 4 naar 1) door `computeTravelTimeFor=all` te combineren met de bestaande geocode-cache, plus **twee retries met exponentiële backoff** in plaats van één |
-
-### Rekenvoorbeeld
-Voorheen: 4 routes × (2 geocodes + 2 routing) = **16 calls per refresh**
-Nu (na eerste keer, met cache): 4 routes × (0 geocodes + 1 routing) = **4 calls per refresh**
-
-Bij TomTom free-tier (5 QPS limiet) zit je dus ruim binnen marge, ook als je meerdere kinderen + routes hebt.
-
-### Bestanden
-- `goedemorgen.html` — CSS voor refresh-btn + spin animatie · HTML header krijgt `↻` knop · nieuwe `refreshAll()` functie · `fetchJsonWithRetry` 2 retries + exp. backoff · `calcRoute` gebruikt gecombineerde routing-call
-- `CHANGELOG.md` — `[1.6.5] — 2026-05-19` entry
-- `README.md` — versie **1.6.5**
-
----
-
 ## Release note voor GitHub (1.6.5)
 
 ---
