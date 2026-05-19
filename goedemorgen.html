@@ -826,6 +826,17 @@
       <div id="import-feedback" style="font-size:13px;margin-top:10px;min-height:18px"></div>
     </div>
 
+    <!-- Diagnose (sinds 1.6.9) -->
+    <div class="s-section">
+      <div class="s-sec-title">Diagnose</div>
+      <div id="diag-panel" style="font-size:12px;line-height:1.6;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px;white-space:pre-wrap;word-break:break-all">Tik op "Vernieuwen" voor live state.</div>
+      <button class="btn-secondary" onclick="refreshDiag()" style="margin-bottom:8px">↻ Vernieuwen</button>
+      <button class="btn-secondary" onclick="resetOAuthState()" style="color:var(--red)">✕ Reset OAuth-state</button>
+      <div style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.4">
+        Reset wist alleen token, expiry en silent-refresh flags. Gist-koppeling, adressen en instellingen blijven staan.
+      </div>
+    </div>
+
     <!-- Sluiten -->
     <div class="s-section">
       <button class="btn-secondary" onclick="closeSettings()">Sluiten</button>
@@ -1688,6 +1699,7 @@ function openSettings() {
   renderSettingsRoutes();
   renderSettingsCalStatus();
   renderLocSettings();
+  refreshDiag();
 }
 
 function showSaved(btn, label = 'Opslaan') {
@@ -2187,6 +2199,59 @@ function silentTokenRefresh() {
     + `&scope=${scope}`
     + `&prompt=none`
   );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DIAGNOSE — live state-overzicht voor debugging (sinds 1.6.9)
+// ═══════════════════════════════════════════════════════════════
+// Toont de actuele auth/sync-state in de instellingen zodat OAuth-issues
+// zichtbaar zijn in plaats van zich te verbergen achter een laad-skelet.
+function refreshDiag() {
+  const el = document.getElementById('diag-panel');
+  if (!el) return;
+  const mask = s => !s ? '∅' : (s.length > 12 ? s.slice(0, 4) + '…' + s.slice(-4) : s);
+  const tok    = ls.get(K.token, null);
+  const exp    = ls.get(K.tokenExp, 0);
+  const now    = Date.now();
+  const valid  = !!validToken();
+  const expIn  = exp ? Math.round((exp - now) / 60000) : 0;
+  const isStd  = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+              || window.navigator.standalone === true;
+  const gclient = ls.get(K.gclient, null);
+  const home    = ls.get(K.home, null);
+  const lines = [
+    `display-mode  : ${isStd ? 'standalone (PWA)' : 'browser (Safari)'}`,
+    `GIST_TOKEN    : ${mask(GIST_TOKEN)}`,
+    `GIST_ID       : ${mask(GIST_ID)}`,
+    `gcal client ID: ${gclient ? mask(gclient) : 'NIET INGESTELD'}`,
+    `thuisadres    : ${home ? '✓ ' + home : 'NIET INGESTELD'}`,
+    ``,
+    `OAuth token   : ${tok ? mask(tok) : 'GEEN'}`,
+    `token expiry  : ${exp ? new Date(exp).toLocaleString('nl-NL') : '—'}`,
+    `verloopt over : ${exp ? (expIn > 0 ? expIn + ' min' : 'VERLOPEN') : '—'}`,
+    `validToken()  : ${valid ? '✓ truthy' : '✗ null/false'}`,
+    ``,
+    `_justOAuthedThisLoad: ${_justOAuthedThisLoad}`,
+    `gm_silent_pending   : ${sessionStorage.getItem('gm_silent_pending') || '—'}`,
+    `gm_silent_failed    : ${sessionStorage.getItem('gm_silent_failed') || '—'}`,
+    ``,
+    `location.href : ${location.href}`,
+    `location.hash : ${location.hash || '(leeg)'}`,
+  ];
+  el.textContent = lines.join('\n');
+}
+
+// Wist OAuth-state lokaal én via Gist-sync, en de silent-refresh vlaggen.
+// Voor wanneer de koppeling vastloopt en je vanaf scratch wilt beginnen.
+function resetOAuthState() {
+  if (!confirm('OAuth-state wissen? Je moet daarna opnieuw koppelen met Google Agenda. Andere instellingen blijven staan.')) return;
+  ls.set(K.token,    null);
+  ls.set(K.tokenExp, 0);
+  sessionStorage.removeItem('gm_silent_pending');
+  sessionStorage.removeItem('gm_silent_failed');
+  _justOAuthedThisLoad = false;
+  alert('OAuth-state gewist. De pagina wordt nu herladen.');
+  setTimeout(() => location.reload(), 300);
 }
 
 // ═══════════════════════════════════════════════════════════════
