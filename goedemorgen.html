@@ -634,7 +634,7 @@
   <div id="tomorrow-divider" style="display:none;margin:12px -4px 0;border-top:1px dashed rgba(255,255,255,0.1)"></div>
   <div id="tomorrow-content" style="display:none"></div>
   <div style="margin-top:14px;text-align:right">
-    <a href="ms-outlook://" style="font-size:12px;color:var(--muted);text-decoration:none;opacity:0.6">Open Outlook agenda →</a>
+    <a href="ms-outlook://events" style="font-size:12px;color:var(--muted);text-decoration:none;opacity:0.6">Open Outlook agenda →</a>
   </div>
 </div>
 
@@ -1409,7 +1409,7 @@ function toggleTomorrow() {
 //  5. NIEUWS  (RSS — rss2json met XML-fallback via allorigins)
 // ═══════════════════════════════════════════════════════════════
 const FEEDS = [
-  { label:'Nieuws', url:'https://feeds.nos.nl/nosnieuwsalgemeen',  count:5, site:'nosapp://' },
+  { label:'Nieuws', url:'https://feeds.nos.nl/nosnieuwsalgemeen',  count:5, site:'https://nos.nl/' },
   { label:'Tech',   url:'https://tweakers.net/feeds/mixed.xml',    count:3, site:'https://tweakers.net' },
   { label:'AI',     url:'https://the-decoder.com/feed/',           count:3, site:'https://the-decoder.com' },
 ];
