@@ -5,6 +5,27 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+# [1.6.11] — 2026-05-19
+
+### Fixed
+- **1.6.10 ving maar één pad af** — de `pageshow` listener detecteerde alleen
+  klassieke BFCache-restore (`event.persisted === true`). iOS Safari blijkt
+  na een OAuth-redirect ook andere paden te gebruiken die geen verse
+  script-eval triggeren maar wél de hash bijwerken. Drie events tegelijk
+  afvangen vangt alle bekende paden af:
+  - `pageshow` met `persisted=true` (BFCache restore)
+  - `hashchange` (hash-only update zonder reload)
+  - `visibilitychange` naar `visible` (tab komt terug zonder reload)
+  
+  Eenmaal eender welke fires, en de hash bevat `access_token=` of `error=`,
+  triggert `window.location.reload()` — die forceert een verse evaluatie
+  waarna `catchToken()` het token netjes uit de URL haalt.
+- **`_reloadIfOAuthHashPresent()`** gedeelde helper voor alle drie de
+  handlers, met dezelfde regex-guard zodat niet-OAuth-hash-changes nooit
+  een reload triggeren.
+
+  ---
+
 ## [1.6.10] — 2026-05-19
 
 ### Fixed
