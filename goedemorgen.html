@@ -234,12 +234,18 @@
       align-items: center;
       padding: 13px 0;
       border-bottom: 1px solid var(--border);
+      /* Werkt zowel voor <div> (skeleton) als <a> (klikbare rij) */
+      color: inherit;
+      text-decoration: none;
+      gap: 12px;
     }
     .route-row:last-child { border-bottom: none; }
+    a.route-row:active { background: rgba(255,255,255,0.04); }
 
     .route-name { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
-    .route-sub  { font-size: 12px; color: var(--muted); }
-    .route-right { text-align: right; }
+    .route-sub  { font-size: 12px; color: var(--muted); line-height: 1.35; word-break: break-word; }
+    .route-left { min-width: 0; flex: 1; }
+    .route-right { text-align: right; flex-shrink: 0; }
 
     .route-mins {
       font-size: 22px;
@@ -1093,12 +1099,19 @@ async function loadTraffic() {
       <div><div class="sk" style="width:48px;height:22px"></div></div>
     </div>`).join('');
 
-  // Draai from/to om bij terugrit voor gewone routes + los __home__ op
+  // Draai from/to om bij terugrit voor gewone routes + los __home__ op.
+  // Bij terugrit hernoemen we "Naar X" → "Vanuit X" zodat de rij-titel klopt met de richting.
   const home = ls.get(K.home, '') || '(thuisadres niet ingesteld)';
   const gereden = routes.map(r => {
     const from = resolveAddress(r.from);
     const to   = resolveAddress(r.to);
-    return terug ? { ...r, from: to, to: from } : { ...r, from, to };
+    if (terug) {
+      const flippedName = /^Naar\s+/i.test(r.name)
+        ? r.name.replace(/^Naar\s+/i, 'Vanuit ')
+        : `↩ ${r.name}`;
+      return { ...r, from: to, to: from, name: flippedName };
+    }
+    return { ...r, from, to };
   });
 
   // Kind-routes voor vandaag
@@ -1119,11 +1132,14 @@ async function loadTraffic() {
   el.innerHTML = `<div style="font-size:12px;color:var(--muted);margin-bottom:12px;font-weight:600;letter-spacing:0.04em">${richting}</div>`
     + results.map((res,i) => {
     const r = gereden[i];
+    const mapsHref = mapsRouteUrl(r.from, r.to);
+    const subLine  = `${escapeHtml(r.from)} <span style="opacity:0.55">→</span> ${escapeHtml(r.to)}`;
+
     if (res.status==='rejected' || !res.value) {
-      return `<div class="route-row">
-        <div><div class="route-name">${r.name}</div><div class="route-sub">Vertrek: ${r.from}</div></div>
+      return `<a href="${mapsHref}" class="route-row">
+        <div class="route-left"><div class="route-name">${escapeHtml(r.name)}</div><div class="route-sub">${subLine}</div></div>
         <div class="route-right"><span class="badge badge-unkn">Niet beschikbaar</span></div>
-      </div>`;
+      </a>`;
     }
     const {mins, normalMins} = res.value;
     const diff = mins - normalMins;
@@ -1134,22 +1150,67 @@ async function loadTraffic() {
     if (pct > 0.4)      { badgeClass='badge-heavy'; badgeText=`+${diff} min · Veel drukte`; }
     else if (pct > 0.2) { badgeClass='badge-busy';  badgeText=`+${diff} min · Druk op de weg`; }
 
-    return `<div class="route-row">
-      <div><div class="route-name">${r.name}</div><div class="route-sub">Vertrek: ${r.from}</div></div>
+    return `<a href="${mapsHref}" class="route-row">
+      <div class="route-left"><div class="route-name">${escapeHtml(r.name)}</div><div class="route-sub">${subLine}</div></div>
       <div class="route-right">
         <div class="route-mins">${mins} min</div>
         <span class="badge ${badgeClass}">${badgeText}</span>
       </div>
-    </div>`;
+    </a>`;
   }).join('');
 }
 
+// Opent direct de Google Maps-app op iOS via het comgooglemaps:// scheme
+// met vertrekadres + bestemming + rij-modus ingeladen. Consistent met de
+// "Open Google Maps →" knop elders in de app.
+function mapsRouteUrl(from, to) {
+  return `comgooglemaps://?saddr=${encodeURIComponent(from)}`
+    + `&daddr=${encodeURIComponent(to)}`
+    + `&directionsmode=driving`;
+}
+
+// HTML-escape voor adressen die in attribute én tekst-positie terechtkomen.
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Geocode-cache (lat/lon per adres). Adressen veranderen niet, dus we cachen
+// een week in localStorage. Dit reduceert TomTom-calls drastisch en lost het
+// "elke refresh een andere route niet beschikbaar"-probleem op (rate limit).
+// Niet in SYNC_KEYS opgenomen — cache is per device.
+const GEOCODE_CACHE_KEY = 'gm_geocode_cache';
+const GEOCODE_TTL_MS    = 7 * 24 * 60 * 60 * 1000;
+
 async function geocode(address, key) {
+  const cache = ls.get(GEOCODE_CACHE_KEY, {});
+  const hit   = cache[address];
+  if (hit && (Date.now() - hit._t) < GEOCODE_TTL_MS) return hit.p;
+
   const url = `https://api.tomtom.com/search/2/geocode/${encodeURIComponent(address)}.json?key=${key}&limit=1&countrySet=NL`;
   const d   = await fetch(url).then(r=>r.json());
   const p   = d.results?.[0]?.position;
   if (!p) throw new Error('Adres niet gevonden: '+address);
+
+  cache[address] = { p, _t: Date.now() };
+  ls.set(GEOCODE_CACHE_KEY, cache);
   return p;
+}
+
+// Eén retry met korte backoff bij netwerkflapper of 429 rate-limit van TomTom.
+async function fetchJsonWithRetry(url, retries = 1) {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const r = await fetch(url);
+      if (r.ok) return r.json();
+      if (r.status !== 429 && r.status < 500) throw new Error(`HTTP ${r.status}`);
+    } catch (e) {
+      if (i === retries) throw e;
+    }
+    await new Promise(res => setTimeout(res, 400));
+  }
+  throw new Error('fetch failed');
 }
 
 async function calcRoute(route, key) {
@@ -1162,8 +1223,8 @@ async function calcRoute(route, key) {
       + `/${from.lat},${from.lon}:${to.lat},${to.lon}/json?key=${key}&travelMode=car`;
 
     const [withT, noT] = await Promise.all([
-      fetch(base+'&traffic=true').then(r=>r.json()),
-      fetch(base+'&traffic=false').then(r=>r.json()),
+      fetchJsonWithRetry(base + '&traffic=true'),
+      fetchJsonWithRetry(base + '&traffic=false'),
     ]);
 
     const mins       = Math.round(withT.routes[0].summary.travelTimeInSeconds / 60);
