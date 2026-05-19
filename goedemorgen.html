@@ -850,7 +850,7 @@
 //  GOEDEMORGEN — © persoonlijk gebruik
 // ═══════════════════════════════════════════════════════════════
 
-const APP_VERSION = '1.6.13';
+const APP_VERSION = '1.6.14';
 
 const K = {
   routes:   'gm_routes',
@@ -1308,42 +1308,49 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') _onPossibleReturn();
 });
 
-// Sinds 1.6.13: catchToken is een herhaaldelijk aanroepbare functie geworden
-// in plaats van een eenmalige IIFE. iOS Safari blijkt in sommige scenario's
-// helemaal geen event te triggeren bij OAuth-return (geen pageshow, geen
-// hashchange, geen visibilitychange) — de hash zit gewoon in de URL maar
-// niets reageert. Door catchToken óók aan te roepen wanneer de gebruiker
-// het diagnose-paneel opent (en bij elke ronde van bekende events), wordt
-// een onverwerkte hash alsnog opgepikt op het moment dat we toch code draaien.
-// Retourneert true als er een vers token is opgeslagen, false anders.
+// Sinds 1.6.13: catchToken is een herhaaldelijk aanroepbare functie geworden.
+// Sinds 1.6.14: kogelvrij — de hele functie zit in een try/catch zodat een
+// onverwachte fout in decodeURIComponent, sessionStorage of replaceState
+// NIET de rest van het script kan stoppen. Dat veroorzaakte in 1.6.13 dat
+// alles na regel 1350 (init, openSettings, loadCalendar, loadNews …) niet
+// meer gedefinieerd werd zodra de hash een rare structuur had.
 function catchToken() {
-  const hash = window.location.hash;
-  if (!hash) return false;
+  try {
+    const hash = window.location.hash;
+    if (!hash) return false;
 
-  const errMatch = hash.match(/[?&#]error=([^&]+)/);
-  if (errMatch) {
-    // Stille vernieuwing mislukt (bijv. niet ingelogd bij Google) —
-    // markeer als mislukt zodat init() niet opnieuw probeert te redirecten.
-    sessionStorage.removeItem('gm_silent_pending');
-    sessionStorage.setItem('gm_silent_failed', '1');
-    history.replaceState(null, '', window.location.pathname);
+    const errMatch = hash.match(/[?&#]error=([^&]+)/);
+    if (errMatch) {
+      // Stille vernieuwing mislukt (bijv. niet ingelogd bij Google) —
+      // markeer als mislukt zodat init() niet opnieuw probeert te redirecten.
+      try { sessionStorage.removeItem('gm_silent_pending'); } catch {}
+      try { sessionStorage.setItem('gm_silent_failed', '1'); } catch {}
+      try { history.replaceState(null, '', window.location.pathname); } catch {}
+      return false;
+    }
+
+    const tokMatch = hash.match(/[?&#]access_token=([^&]+)/);
+    const expMatch = hash.match(/[?&#]expires_in=([0-9]+)/);
+    if (tokMatch) {
+      // decodeURIComponent kan throwen bij malformed escape sequences —
+      // val terug op de rauwe waarde als dat gebeurt.
+      let tok;
+      try { tok = decodeURIComponent(tokMatch[1]); }
+      catch { tok = tokMatch[1]; }
+      const exp = expMatch ? parseInt(expMatch[1]) : 3600;
+      ls.set(K.token,    tok);
+      ls.set(K.tokenExp, Date.now() + exp * 1000);
+      _justOAuthedThisLoad = true; // bescherm tegen Gist-overschrijving
+      try { sessionStorage.removeItem('gm_silent_pending'); } catch {}
+      try { sessionStorage.removeItem('gm_silent_failed'); } catch {}
+      try { history.replaceState(null, '', window.location.pathname); } catch {}
+      return true;
+    }
+    return false;
+  } catch {
+    // Wat er ook misgaat — laat de rest van de app niet vallen.
     return false;
   }
-
-  const tokMatch = hash.match(/[?&#]access_token=([^&]+)/);
-  const expMatch = hash.match(/[?&#]expires_in=([0-9]+)/);
-  if (tokMatch) {
-    const tok = decodeURIComponent(tokMatch[1]);
-    const exp = expMatch ? parseInt(expMatch[1]) : 3600;
-    ls.set(K.token,    tok);
-    ls.set(K.tokenExp, Date.now() + exp * 1000);
-    _justOAuthedThisLoad = true; // bescherm tegen Gist-overschrijving
-    sessionStorage.removeItem('gm_silent_pending');
-    sessionStorage.removeItem('gm_silent_failed'); // reset bij succes
-    history.replaceState(null, '', window.location.pathname);
-    return true;
-  }
-  return false;
 }
 
 // Eerste aanroep bij script-evaluatie (de normale, snelste route)
