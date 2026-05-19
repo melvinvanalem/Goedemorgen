@@ -5,6 +5,51 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.6.4] — 2026-05-19
+
+### Fixed
+- **Route-titel klopte niet bij terugrit** — na 12:00 toont de header "🏠 Naar huis"
+  en worden `from`/`to` correct omgedraaid, maar de rij-titel bleef "Naar werk
+  (Houten)" met daaronder "Vertrek: Pakketboot 57, Houten". Inhoudelijk klopte het
+  niet: je vertrekt vanuit werk, niet ernaartoe. Nu wordt elke route-naam die met
+  "Naar " begint dynamisch omgezet naar "Vanuit " (regex `^Naar\s+` →
+  `Vanuit `). Routes zonder dat prefix krijgen een `↩ ` voorzetsel.
+- **Wisselende "Niet beschikbaar" per refresh** — TomTom geocode- en routing-calls
+  gingen elke refresh opnieuw parallel naar de API. Op een gratis TomTom-account
+  veroorzaakt dat sporadische rate-limit afwijzingen (429), waardoor telkens een
+  ándere route faalde. Twee maatregelen:
+  - **Geocode-cache** — lat/lon per adres wordt nu een week gecached in
+    `gm_geocode_cache` (localStorage, niet in `SYNC_KEYS`). Dezelfde routes
+    worden bij elke refresh dus zonder geocode-calls berekend.
+  - **`fetchJsonWithRetry()`** — één retry met 400ms backoff op 429 en 5xx
+    responses voor de routing-calls.
+
+### Added
+- **Bestemming zichtbaar in elke route-rij** — onder de route-naam staat nu
+  `<vertrekadres> → <bestemmingsadres>` in plaats van alleen "Vertrek: …".
+  Geldt voor alle routes inclusief kind-routes (wegbrengen én ophalen).
+- **Route-rij is klikbaar → opent Google Maps app met route geladen** — elke
+  rij is nu een `<a href="comgooglemaps://?saddr=…&daddr=…&directionsmode=driving">`
+  die direct de Google Maps-app opent met vertrekadres en bestemming
+  ingevuld en rij-modus geselecteerd. Consistent met de bestaande
+  "Open Google Maps →" knop. Werkt ook op rijen die als "Niet beschikbaar"
+  worden getoond — dan kun je alsnog handmatig de route in Maps openen.
+- **`mapsRouteUrl(from, to)`** — helper die het comgooglemaps:// URL bouwt.
+- **`escapeHtml()`** — kleine helper zodat adressen veilig in zowel attribute
+  als tekstpositie worden gerenderd; voorkomt rendering-glitches bij rare tekens
+  (`&`, `<`, `"`) in adresnamen.
+
+### Changed
+- **`.route-row` CSS** uitgebreid met `color: inherit`, `text-decoration: none`
+  en een lichte tap-feedback (`a.route-row:active`) zodat het element zowel als
+  `<div>` (skeleton) als `<a>` (echte rij) goed rendert.
+- **`.route-sub`** krijgt `line-height: 1.35` en `word-break: break-word` voor
+  betere weergave van twee adressen op smalle schermen.
+- **`.route-left` / `.route-right`** met `flex: 1 / flex-shrink: 0` zodat de
+  reistijd-badge altijd rechts past, ook bij lange adressen.
+
+---
+
 ## [1.6.3] — 2026-05-19
 
 ### Fixed
