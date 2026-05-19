@@ -5,7 +5,43 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## Release note voor GitHub (1.6.5)
+## [1.6.6] — 2026-05-19
+
+### Fixed
+- **App bleef oneindig laden na Google Agenda koppelen** — door een race
+  condition geïntroduceerd in 1.6.3 (token toegevoegd aan `SYNC_KEYS`):
+  1. OAuth-redirect levert een **vers token** in `localStorage` en triggert
+     een Gist-sync met 2-seconden debounce.
+  2. `init()` haalt direct de Gist op (binnen ~100ms) — die bevat dan nog
+     het **oude** token, want de debounce-timer is nog niet afgelopen.
+  3. `applySettings()` overschrijft het verse token met het oude.
+  4. `validToken()` zegt: ongeldig → `silentTokenRefresh()` doet redirect
+     naar Google → in iOS PWA verlaat de redirect de webapp → blijft
+     hangen op een leeg scherm.
+
+  Opgelost door in `applySettings()` alleen het Gist-token toe te passen
+  als `remoteExp > localExp` — een verser lokaal token wint altijd van
+  een ouder Gist-token. Cross-device sync blijft volledig werken: zodra
+  Safari een nieuw token heeft, propageert het binnen 2 seconden naar de
+  andere apparaten.
+- **Eindeloze redirect-loop in iOS standalone webapp** — `silentTokenRefresh()`
+  werkt fundamenteel niet in iOS standalone mode: de redirect naar
+  `accounts.google.com` opent in Safari (niet in de webapp), de PWA blijft
+  hangen op een lege pagina. We detecteren nu standalone mode via
+  `display-mode: standalone` of `navigator.standalone` en slaan silent
+  refresh daar over. De webapp vertrouwt op Gist-sync vanuit Safari voor
+  verse tokens, met de "Verbind Google Agenda"-knop als fallback.
+
+### Changed
+- **Header-uitlijning verbeterd** — refresh- en instellingen-knop stonden te
+  dicht op de grote 66px klok. Twee aanpassingen in `.app-header`:
+  - `align-items: flex-end` (was `flex-start`) — knoppen zakken nu naast het
+    kleinere date-label in plaats van naast de bovenkant van de klok.
+  - `gap: 16px` toegevoegd — gegarandeerde horizontale ademruimte tussen de
+    klok-blok en de actieknoppen, ook bij lange tijdsweergaves.
+  - `margin-top: 6px` verwijderd van `.settings-btn, .refresh-btn` — niet
+    meer nodig dankzij de flex-end uitlijning.
+
 
 ---
 
