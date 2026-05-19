@@ -5,6 +5,25 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.6.2] — 2026-05-19
+
+### Fixed
+- **NOS button did not open** — the "meer nieuws →" link used the URL scheme
+  `nosapp://`, but the NOS app does not register that scheme. Safari showed
+  "Cannot open page because the address is invalid". Replaced with `https://nos.nl/`;
+  iOS opens the NOS app via Universal Links if installed, and falls back to the
+  website in Safari otherwise.
+- **Outlook button opened the inbox instead of the calendar** — the "Open Outlook
+  agenda →" link used `ms-outlook://` without a path, so Outlook defaulted to the
+  mail tab. Replaced with `ms-outlook://events` so the app opens directly in the
+  calendar tab.
+
+### Notes
+- Both changes are single-line edits in `goedemorgen.html`; no changes to APIs,
+  storage, or the OAuth flow. No re-authentication required.
+
+---
+
 ## [1.6.1] — 2026-05-18
 
 ### Changed
