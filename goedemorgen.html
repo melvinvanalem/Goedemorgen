@@ -1287,6 +1287,18 @@ async function calcRoute(route, key) {
 // (maar nog niet verlopen) Gist-token het verse OAuth-token overschrijven.
 let _justOAuthedThisLoad = false;
 
+// iOS Safari BFCache fix (sinds 1.6.10): wanneer Safari de pagina uit
+// Back-Forward Cache restaureert NA een OAuth-redirect, draaien scripts
+// (inclusief catchToken) NIET opnieuw. De hash krijgt wel de nieuwe
+// access_token= maar niets verwerkt 'm — de app blijft daardoor hangen
+// op het oude (verlopen) token. Detecteer BFCache via pageshow.persisted
+// en forceer een fresh load zodat catchToken alsnog uitvoert.
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted && /access_token=|[?&#]error=/.test(window.location.hash)) {
+    window.location.reload();
+  }
+});
+
 // Vang OAuth-redirect token (of fout) op uit URL-hash
 (function catchToken() {
   const hash = window.location.hash;
