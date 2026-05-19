@@ -5,6 +5,38 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.6.13] — 2026-05-19
+
+### Fixed
+- **`catchToken()` IIFE draaide niet bij OAuth-return op iOS Safari** —
+  zelfs met de listeners uit 1.6.11 én de regex-extractie uit 1.6.12 bleef
+  het token onverwerkt in de URL hangen. iOS Safari triggert blijkbaar in
+  sommige scenario's helemaal geen event (geen `pageshow`, geen
+  `hashchange`, geen `visibilitychange`) bij een OAuth-return naar dezelfde
+  pagina. De hash zit in de URL maar niets in onze code reageert erop.
+  
+  Diagnose uit 1.6.12 maakte het zichtbaar:
+  - `versie: Goedemorgen v1.6.12` (script is geladen)
+  - `_justOAuthedThisLoad: false` (catchToken liep niet)
+  - `location.hash : #iss=...&access_token=ya29...` (vers token wacht)
+
+### Changed
+- **`catchToken()` herzien van IIFE naar herhaaldelijk aanroepbare functie**
+  die `true`/`false` retourneert. Wordt nu op meerdere momenten aangeroepen:
+  1. Eenmaal bij script-evaluatie (de normale, snelste route)
+  2. Bij `pageshow` met `persisted=true` (BFCache restore)
+  3. Bij `hashchange`
+  4. Bij `visibilitychange` naar `visible`
+  5. **Bij elke `refreshDiag()` aanroep** — dus zodra je het diagnose-paneel
+     opent, wordt een onverwerkte hash alsnog opgepikt (de cruciale fallback
+     wanneer geen enkel event afgaat).
+- **Event-handlers reloaden niet meer maar verwerken inline** — als
+  `catchToken()` succesvol een vers token opslaat, wordt alleen
+  `loadCalendar()` opnieuw aangeroepen om de agenda te renderen. Geen
+  page-reload meer, geen visuele flash.
+
+---
+
 ## [1.6.12] — 2026-05-19
 
 ### Added
