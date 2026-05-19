@@ -850,7 +850,7 @@
 //  GOEDEMORGEN — © persoonlijk gebruik
 // ═══════════════════════════════════════════════════════════════
 
-const APP_VERSION = '1.6.12';
+const APP_VERSION = '1.6.13';
 
 const K = {
   routes:   'gm_routes',
@@ -1290,53 +1290,48 @@ async function calcRoute(route, key) {
 // (maar nog niet verlopen) Gist-token het verse OAuth-token overschrijven.
 let _justOAuthedThisLoad = false;
 
-// iOS Safari OAuth-return fix (1.6.10 → uitgebreid in 1.6.11): Safari kan
-// de pagina na een OAuth-redirect op drie manieren weer presenteren zonder
-// scripts opnieuw te draaien:
-//   1. pageshow met persisted=true   → restore uit BFCache
-//   2. hashchange                    → behandelt return als enkel een hash-update
-//   3. visibilitychange (visible)    → tab komt terug zonder reload
-// catchToken() draait dan niet, het verse access_token blijft onverwerkt
-// in de URL en de app draait door met het oude (verlopen) token.
-// We vangen alle drie events af; de reload triggert een verse script-eval
-// waarna catchToken() het token wel netjes uit de hash plukt. De regex-guard
-// voorkomt reloads als de hash niets met OAuth te maken heeft.
-function _reloadIfOAuthHashPresent() {
-  if (/access_token=|[?&#]error=/.test(window.location.hash)) {
-    window.location.reload();
+// iOS Safari OAuth-return fix (1.6.10 → herzien in 1.6.13): drie events
+// kunnen de "ik kom terug van Google"-situatie aankondigen. We roepen
+// catchToken() direct aan in plaats van te reloaden — sneller en zonder
+// flash. Als er een vers token wordt opgepikt, herladen we alleen de
+// agenda-card zodat die het nieuwe token gebruikt.
+function _onPossibleReturn() {
+  if (catchToken() && typeof loadCalendar === 'function') {
+    loadCalendar();
   }
 }
 window.addEventListener('pageshow', (event) => {
-  if (event.persisted) _reloadIfOAuthHashPresent();
+  if (event.persisted) _onPossibleReturn();
 });
-window.addEventListener('hashchange', _reloadIfOAuthHashPresent);
+window.addEventListener('hashchange', _onPossibleReturn);
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') _reloadIfOAuthHashPresent();
+  if (document.visibilityState === 'visible') _onPossibleReturn();
 });
 
-// Vang OAuth-redirect token (of fout) op uit URL-hash.
-// Sinds 1.6.12: manuele regex i.p.v. URLSearchParams omdat Google de hash
-// stuurt met ongecodeerde `:` en `/` in waarden (bv. `iss=https://...`).
-// iOS Safari's URLSearchParams blijkt daar in sommige scenario's niet
-// betrouwbaar mee om te gaan, waardoor `p.get('access_token')` null gaf
-// ondanks dat het token aanwezig was. Regex-extractie pakt het token
-// ongeacht hoe de overige parameters in de hash gecodeerd zijn.
-(function catchToken() {
+// Sinds 1.6.13: catchToken is een herhaaldelijk aanroepbare functie geworden
+// in plaats van een eenmalige IIFE. iOS Safari blijkt in sommige scenario's
+// helemaal geen event te triggeren bij OAuth-return (geen pageshow, geen
+// hashchange, geen visibilitychange) — de hash zit gewoon in de URL maar
+// niets reageert. Door catchToken óók aan te roepen wanneer de gebruiker
+// het diagnose-paneel opent (en bij elke ronde van bekende events), wordt
+// een onverwerkte hash alsnog opgepikt op het moment dat we toch code draaien.
+// Retourneert true als er een vers token is opgeslagen, false anders.
+function catchToken() {
   const hash = window.location.hash;
-  if (!hash) return;
+  if (!hash) return false;
 
-  const errMatch  = hash.match(/[?&#]error=([^&]+)/);
+  const errMatch = hash.match(/[?&#]error=([^&]+)/);
   if (errMatch) {
     // Stille vernieuwing mislukt (bijv. niet ingelogd bij Google) —
     // markeer als mislukt zodat init() niet opnieuw probeert te redirecten.
     sessionStorage.removeItem('gm_silent_pending');
     sessionStorage.setItem('gm_silent_failed', '1');
     history.replaceState(null, '', window.location.pathname);
-    return;
+    return false;
   }
 
-  const tokMatch  = hash.match(/[?&#]access_token=([^&]+)/);
-  const expMatch  = hash.match(/[?&#]expires_in=([0-9]+)/);
+  const tokMatch = hash.match(/[?&#]access_token=([^&]+)/);
+  const expMatch = hash.match(/[?&#]expires_in=([0-9]+)/);
   if (tokMatch) {
     const tok = decodeURIComponent(tokMatch[1]);
     const exp = expMatch ? parseInt(expMatch[1]) : 3600;
@@ -1346,8 +1341,13 @@ document.addEventListener('visibilitychange', () => {
     sessionStorage.removeItem('gm_silent_pending');
     sessionStorage.removeItem('gm_silent_failed'); // reset bij succes
     history.replaceState(null, '', window.location.pathname);
+    return true;
   }
-})();
+  return false;
+}
+
+// Eerste aanroep bij script-evaluatie (de normale, snelste route)
+catchToken();
 
 function validToken() {
   const t = ls.get(K.token);
@@ -2246,6 +2246,12 @@ function silentTokenRefresh() {
 function refreshDiag() {
   const el = document.getElementById('diag-panel');
   if (!el) return;
+  // Sinds 1.6.13: defensief — als de hash nog een onverwerkt token bevat,
+  // pak die nu op voordat we de state tonen. Als er een token is gevangen,
+  // herlaad de agenda direct zodat die ook meteen werkt.
+  if (catchToken() && typeof loadCalendar === 'function') {
+    loadCalendar();
+  }
   const mask = s => !s ? '∅' : (s.length > 12 ? s.slice(0, 4) + '…' + s.slice(-4) : s);
   const tok    = ls.get(K.token, null);
   const exp    = ls.get(K.tokenExp, 0);
