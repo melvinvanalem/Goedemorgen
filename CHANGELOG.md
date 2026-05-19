@@ -40,6 +40,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   en gooit een duidelijke error bij ontbrekende data, in plaats van te crashen
   op `undefined.travelTimeInSeconds`.
 
+### Fixed
+- **Verkeer-badge toonde bijna altijd "Vlot rijden"** — de oude `traffic=true` /
+  `traffic=false` aanpak gaf vaak twee bijna identieke reistijden terug, waardoor
+  het verschil (`diff`) tegen nul aanlag en de drempels voor "Druk op de weg"
+  (>20%) en "Veel drukte" (>40%) nooit gehaald werden. Door over te stappen op
+  `computeTravelTimeFor=all` levert TomTom nu de échte vrije-doorgang baseline
+  (`noTrafficTravelTimeInSeconds`) — vertraging wordt zichtbaar en de badges
+  kloppen weer.
+
 ### Notes
 - **iOS pull-to-refresh in standalone modus** is op iOS 17+ enigszins
   beschikbaar maar gedraagt zich grillig — vooral als de eerste pixel van
