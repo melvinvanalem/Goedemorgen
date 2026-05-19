@@ -121,6 +121,10 @@
       align-items: flex-end; /* knoppen onderaan, naast het kleinere date-label */
       gap: 16px;             /* horizontale ademruimte tot de klok */
       margin-bottom: 14px;
+      /* Sinds 1.6.7: padding-rechts gelijk aan card-padding (20px) zodat het
+         tandwiel-icoon visueel niet tegen de schermrand drukt en de uitlijning
+         klopt met de rechterkant van de cards eronder. */
+      padding-right: 4px;
     }
 
     #clock {
@@ -1258,6 +1262,12 @@ async function calcRoute(route, key) {
 //  4. GOOGLE AGENDA  (OAuth 2.0 implicit grant — geen backend)
 // ═══════════════════════════════════════════════════════════════
 
+// Module-scope vlag (sinds 1.6.7): wordt true zodra catchToken een vers
+// OAuth-token uit de URL-hash heeft opgepikt. applySettings respecteert deze
+// vlag en laat het Gist-token deze pageload met rust — anders kan een ouder
+// (maar nog niet verlopen) Gist-token het verse OAuth-token overschrijven.
+let _justOAuthedThisLoad = false;
+
 // Vang OAuth-redirect token (of fout) op uit URL-hash
 (function catchToken() {
   const hash = window.location.hash;
@@ -1278,6 +1288,7 @@ async function calcRoute(route, key) {
   if (tok) {
     ls.set(K.token,    tok);
     ls.set(K.tokenExp, Date.now() + exp * 1000);
+    _justOAuthedThisLoad = true; // bescherm tegen Gist-overschrijving
     sessionStorage.removeItem('gm_silent_pending');
     sessionStorage.removeItem('gm_silent_failed'); // reset bij succes
     history.replaceState(null, '', window.location.pathname);
@@ -2020,12 +2031,16 @@ function applySettings(data) {
   if (data.tomtom    !== undefined) ls.set(K.tomtom,   data.tomtom);
   if (data.gclient   !== undefined) ls.set(K.gclient,  data.gclient);
 
-  // Race-safe token apply (1.6.6): pas alleen toe als het Gist-token strikt
-  // nieuwer is dan het lokale. Voorkomt dat een vers token (net binnengekomen
-  // via OAuth-redirect) wordt overschreven door een ouder Gist-token dat nog
-  // niet bijgewerkt is — de debounced sync is 2s, de Gist-fetch onder init()
-  // is veel sneller.
-  if (data.gcalToken !== undefined && data.gcalExp !== undefined) {
+  // Token-apply guardrails (1.6.7):
+  // 1. Zit dit pageload net na een OAuth-redirect? → Gist-token wordt
+  //    overgeslagen; het lokale verse token is per definitie het beste.
+  // 2. Anders: pas Gist-token alleen toe als de remote-expiry strikt
+  //    nieuwer is dan de lokale. Dit dekt cross-device sync (Safari heeft
+  //    net een nieuw token, webapp pakt het op) zonder dat een stale-maar-
+  //    nog-niet-verlopen token uit Gist een vers lokaal token kan kapen.
+  if (!_justOAuthedThisLoad
+      && data.gcalToken !== undefined
+      && data.gcalExp   !== undefined) {
     const remoteExp = Number(data.gcalExp) || 0;
     const localExp  = ls.get(K.tokenExp, 0);
     if (remoteExp > localExp) {
