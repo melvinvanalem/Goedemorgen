@@ -5,6 +5,39 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.6.12] — 2026-05-19
+
+### Added
+- **`APP_VERSION` constante** (`'1.6.12'`) bovenaan het script — single source
+  of truth voor het versienummer. Geen meer twijfel of een deploy live is.
+- **Versie zichtbaar in twee plekken** in de UI:
+  - Eerste regel van het diagnose-paneel toont `versie : Goedemorgen v1.6.12`
+  - Subtiele footer onderaan het instellingenscherm met dezelfde tekst
+  Beide gegenereerd uit dezelfde constante, dus altijd consistent.
+
+### Fixed
+- **`catchToken()` faalde stil op iOS Safari bij OAuth-hash met
+  ongecodeerde karakters** — vermoedelijke hoofdoorzaak van alle eerdere
+  "blijft hangen"-issues. De OAuth-redirect van Google bevat sinds enige
+  tijd een `iss=https://accounts.google.com` parameter met **letterlijke
+  `:` en `/`** in het waardedeel. iOS Safari's `URLSearchParams.get()`
+  blijkt in dat scenario soms `null` terug te geven voor `access_token`,
+  zelfs als het token gewoon in de hash staat. `_justOAuthedThisLoad`
+  bleef daardoor false en het token werd nooit opgeslagen — terwijl alles
+  in de hash gewoon klopte.
+
+  Opgelost door `URLSearchParams` te vervangen door manuele regex-extractie:
+  ```
+  hash.match(/[?&#]access_token=([^&]+)/)
+  hash.match(/[?&#]expires_in=([0-9]+)/)
+  hash.match(/[?&#]error=([^&]+)/)
+  ```
+  Regex is onafhankelijk van URL-encoding en pakt het token los van wat
+  er verder in de hash staat. `decodeURIComponent()` op de gevangen waarde
+  zorgt dat eventueel gecodeerde karakters wél netjes ontcodeerd worden.
+
+  ---
+
 # [1.6.11] — 2026-05-19
 
 ### Fixed
