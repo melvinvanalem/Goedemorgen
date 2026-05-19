@@ -128,7 +128,10 @@
     }
 
     #clock {
-      font-size: 66px;
+      /* Sinds 1.6.8: responsive font-size zodat HH:MM:SS niet de actieknoppen
+         van het scherm duwt op smalle iPhones. Klamp tussen 44px en 66px,
+         schaalt met 13% van de viewport-breedte ertussenin. */
+      font-size: clamp(44px, 13vw, 66px);
       font-weight: 800;
       letter-spacing: -0.03em;
       line-height: 1;
@@ -1207,8 +1210,13 @@ async function geocode(address, key) {
   const hit   = cache[address];
   if (hit && (Date.now() - hit._t) < GEOCODE_TTL_MS) return hit.p;
 
+  // Sinds 1.6.8: ook geocode gebruikt fetchJsonWithRetry. Voorheen brak één
+  // tijdelijke 429/5xx op geocode-niveau direct het hele route-blok ("Niet
+  // beschikbaar") terwijl routing wél robuust was. Nu twee retries met
+  // exponentiële backoff (400ms, 1200ms) — eenmaal succesvol blijft het
+  // adres 7 dagen gecached, dus alleen de éérste lookup is gevoelig.
   const url = `https://api.tomtom.com/search/2/geocode/${encodeURIComponent(address)}.json?key=${key}&limit=1&countrySet=NL`;
-  const d   = await fetch(url).then(r=>r.json());
+  const d   = await fetchJsonWithRetry(url);
   const p   = d.results?.[0]?.position;
   if (!p) throw new Error('Adres niet gevonden: '+address);
 
