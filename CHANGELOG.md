@@ -5,6 +5,36 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.6.10] — 2026-05-19
+
+### Fixed
+- **OAuth-koppeling bleef hangen op iPhone — iOS Safari BFCache** — dé oorzaak
+  van alle eerdere "blijft laden"-meldingen na Google Agenda koppelen. iOS
+  Safari restaureert de pagina na een externe redirect (zoals OAuth) uit zijn
+  Back-Forward Cache in plaats van een verse load te doen. Resultaat: het
+  document zit klaar, de URL krijgt de nieuwe hash `#access_token=…` van
+  Google, maar **geen enkel script draait opnieuw** — inclusief de
+  `catchToken()` IIFE die het token uit de hash zou plukken. Het token bleef
+  daardoor onverwerkt in de URL hangen, terwijl de app zelf doordraaide met
+  het oude (verlopen) token uit localStorage.
+
+  Bevestigd via het 1.6.9-diagnose-paneel: gebruiker zag locatie.hash met
+  vers token én `_justOAuthedThisLoad: false` én een verlopen token in
+  localStorage — alleen verklaarbaar als catchToken niet was uitgevoerd.
+
+  Opgelost met een `pageshow`-listener die `event.persisted === true`
+  detecteert (= BFCache restore) en alleen herlaadt als de hash een
+  `access_token` of `error` parameter bevat — dat houdt het impact-oppervlak
+  klein. Na de reload draait `catchToken()` wél vers, slaat het token op,
+  zet `_justOAuthedThisLoad = true`, en init() loopt normaal door.
+
+### Notes
+- **Dit had ik veel eerder kunnen vinden** — de diagnose uit 1.6.9 maakte het
+  in één blik duidelijk. Voor toekomstige iOS Safari issues is dat paneel de
+  eerste stap.
+
+  ---
+
 ## [1.6.9] — 2026-05-19
 
 ### Added
