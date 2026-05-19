@@ -5,6 +5,26 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.6.9] — 2026-05-19
+
+### Added
+- **Diagnose-paneel in instellingen** — een nieuwe sectie onderaan ⚙️ die de
+  actuele auth/sync-state toont in monospace tekst: display-mode (standalone vs.
+  browser), GIST_TOKEN/GIST_ID aanwezigheid (gemaskeerd), Google client ID,
+  thuisadres, OAuth token + expiry + verloop-tijd, `validToken()` uitkomst,
+  `_justOAuthedThisLoad` vlag, sessionStorage flags (`gm_silent_pending`,
+  `gm_silent_failed`), en de huidige URL met hash. Vernieuwt automatisch bij
+  het openen van instellingen en handmatig via een ↻ knop. Vervangt het
+  giswerk bij OAuth-koppelingsproblemen door één zichtbaar overzicht.
+- **"Reset OAuth-state" knop** — wist `gm_gcal_token`, `gm_gcal_exp` en
+  beide silent-refresh `sessionStorage` flags, en herlaadt de pagina. Voor
+  wanneer de Google Agenda-koppeling in een vastgelopen staat zit. Andere
+  instellingen (adressen, routes, kinderen, Gist-koppeling) blijven intact.
+- **`refreshDiag()`** en **`resetOAuthState()`** als bijbehorende JS-functies.
+  Wordt aangeroepen in `openSettings()` zodat het paneel altijd actueel is.
+
+---
+
 ## [1.6.8] — 2026-05-19
 
 ### Fixed
