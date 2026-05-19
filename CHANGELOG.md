@@ -5,6 +5,36 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.6.7] — 2026-05-19
+
+### Fixed
+- **Vers OAuth-token werd alsnog overschreven door stale Gist-token** — de
+  race-safe expiry-vergelijking uit 1.6.6 was nodig maar niet voldoende.
+  Scenario dat brak:
+  1. Eerdere mislukte OAuth-pogingen lieten een **stale-maar-nog-niet-verlopen**
+     token achter in de Gist (timestamp in de toekomst, API in werkelijkheid
+     dead).
+  2. Gebruiker koppelt opnieuw → catchToken zet een vers token in localStorage.
+  3. `init()` haalt Gist op → bevat het stale token mét een latere expiry.
+  4. Race-safe check: `remoteExp > localExp` → true → applySettings overschrijft
+     het verse token met het dode Gist-token.
+  5. `validToken()` zegt OK (timestamp klopt), Google API geeft 401, catch
+     wist het token, "Verbind"-knop verschijnt → klikken → loop.
+
+  Opgelost door een module-scope vlag `_justOAuthedThisLoad` die door
+  `catchToken()` op `true` wordt gezet zodra een vers token uit de URL-hash is
+  opgepikt. `applySettings()` slaat de Gist-token-velden dan deze pageload
+  volledig over — het lokale token is per definitie het verst. Bij volgende
+  loads zonder OAuth in de URL geldt de normale race-safe expiry-vergelijking.
+
+### Changed
+- **Header-knoppen rechts beter ingelaten** — `padding-right: 4px` op
+  `.app-header` toegevoegd zodat de instellingen- en refresh-knop visueel
+  niet tegen de schermrand drukken. Sluit beter aan op de visuele uitlijning
+  van de card-content eronder.
+
+---
+
 ## [1.6.6] — 2026-05-19
 
 ### Fixed
