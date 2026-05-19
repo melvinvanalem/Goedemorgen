@@ -5,6 +5,71 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+Klaar — 1.6.5 verwerkt beide issues.
+
+### Wat is er veranderd
+
+| Probleem | Fix |
+|---|---|
+| Pull-to-refresh werkt niet in iOS webapp | **`↻` refresh-knop** in de header, met spinner-feedback en gedisabled tijdens het laden |
+| Routes nog steeds soms "Niet beschikbaar" | **75% minder TomTom-calls per route** (van 4 naar 1) door `computeTravelTimeFor=all` te combineren met de bestaande geocode-cache, plus **twee retries met exponentiële backoff** in plaats van één |
+
+### Rekenvoorbeeld
+Voorheen: 4 routes × (2 geocodes + 2 routing) = **16 calls per refresh**
+Nu (na eerste keer, met cache): 4 routes × (0 geocodes + 1 routing) = **4 calls per refresh**
+
+Bij TomTom free-tier (5 QPS limiet) zit je dus ruim binnen marge, ook als je meerdere kinderen + routes hebt.
+
+### Bestanden
+- `goedemorgen.html` — CSS voor refresh-btn + spin animatie · HTML header krijgt `↻` knop · nieuwe `refreshAll()` functie · `fetchJsonWithRetry` 2 retries + exp. backoff · `calcRoute` gebruikt gecombineerde routing-call
+- `CHANGELOG.md` — `[1.6.5] — 2026-05-19` entry
+- `README.md` — versie **1.6.5**
+
+---
+
+## Release note voor GitHub (1.6.5)
+
+---
+
+## [1.6.5] — 2026-05-19
+
+### Added
+- **Refresh-knop in de header** — een `↻`-knop links naast de instellingen
+  vernieuwt alle dashboard-secties (weer, reistijd, agenda, nieuws) parallel.
+  Pull-to-refresh werkt niet betrouwbaar in iOS standalone webapps; deze knop
+  vervangt die handeling. De knop spint tijdens het laden (`@keyframes spin`)
+  en is gedisabled zolang de refresh loopt, met een minimum van 600ms zichtbare
+  feedback voor snelle responses.
+- **`refreshAll()`** — herlaadt `loadWeather()`, `loadTraffic()`, `loadCalendar()`
+  en `loadNews()` via `Promise.allSettled` zodat één traag onderdeel de rest
+  niet blokkeert.
+- **`.header-actions`** flex-wrapper rondom de twee knoppen voor consistente
+  uitlijning op smalle schermen.
+
+### Changed
+- **TomTom routing-calls gehalveerd** — `calcRoute()` deed eerst twee aparte
+  routing-requests (één met `traffic=true`, één met `traffic=false`) om de
+  vertraging te berekenen. Nu gebruiken we de parameter
+  `computeTravelTimeFor=all` waardoor de respons in één request zowel
+  `travelTimeInSeconds` (live verkeer) als `noTrafficTravelTimeInSeconds`
+  (vrije doorgang) bevat. Combineert met de geocode-cache uit 1.6.4: per route
+  nog maar één TomTom-call in plaats van vier — dat is een **~75% reductie**
+  van het API-verkeer en lost de resterende "soms niet beschikbaar"-meldingen op.
+- **`fetchJsonWithRetry()`** uitgebreid van één retry (400ms) naar twee retries
+  met exponentiële backoff (400ms → 1200ms). Een tijdelijke 429 of 503 wordt nu
+  netjes opgevangen in plaats van direct als "Niet beschikbaar" getoond.
+- **`calcRoute()`** valideert nu expliciet de aanwezigheid van `routes[0].summary`
+  en gooit een duidelijke error bij ontbrekende data, in plaats van te crashen
+  op `undefined.travelTimeInSeconds`.
+
+### Notes
+- **iOS pull-to-refresh in standalone modus** is op iOS 17+ enigszins
+  beschikbaar maar gedraagt zich grillig — vooral als de eerste pixel van
+  de pagina niet zichtbaar is. De expliciete refresh-knop is daarom de
+  betrouwbare route.
+
+  ---
+
 ## [1.6.4] — 2026-05-19
 
 ### Fixed
