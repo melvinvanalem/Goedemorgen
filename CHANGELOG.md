@@ -5,6 +5,58 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.6.3] — 2026-05-19
+
+### Fixed
+- **"Agenda niet beschikbaar" in iOS standalone webapp** — the OAuth token expires
+  hourly, but `silentTokenRefresh()` is unreliable in iOS PWA mode because iOS opens
+  `accounts.google.com` in Safari instead of the standalone webview. The webapp held
+  a stale token whose expiry timestamp was still in the future, so `validToken()`
+  returned it, the Google API rejected it, and the generic catch branch hid the
+  problem behind a dead "Agenda niet beschikbaar" message — without offering any
+  way to recover.
+- **Per-calendar event fetches did not check HTTP status** — only the initial
+  `calendarList` request threw on `!r.ok`. A 401 on individual calendar requests
+  passed through silently as an empty result, masking auth failures.
+- **Cancelled or malformed events crashed the render** — Google Calendar API can
+  return items with `status: "cancelled"` and no `start`/`end` fields. One such
+  event made `new Date(ev.start.dateTime || ev.start.date)` throw a TypeError,
+  which propagated to the outer catch and triggered the dead fallback message.
+
+### Changed
+- **OAuth token & expiry now sync via Gist** — `gm_gcal_token` and `gm_gcal_exp`
+  added to `SYNC_KEYS`. A token refresh in Safari (where the OAuth redirect flow
+  works) now propagates within ~2 seconds to the iPhone webapp on the home screen.
+  Eenmalig koppelen blijft genoeg; daarna geen handmatig werk meer.
+- **`buildSettingsPayload()` & `applySettings()`** uitgebreid met `gcalToken` en
+  `gcalExp` velden. Bestaande export-bestanden zonder die velden blijven werken
+  (de `if (data.x !== undefined)`-guards laten ontbrekende velden gewoon staan).
+- **`authedFetch()` helper geïntroduceerd in `loadCalendar()`** — elke 401/403
+  van Google gooit nu `'auth'`, ongeacht welke API-call faalt. Een totale rejection
+  op alle per-agenda fetches wordt óók als auth-fout behandeld.
+- **Catch-fallback toont een actieknop** — "🔄 Opnieuw verbinden" in plaats van
+  de doodlopende tekst "Agenda niet beschikbaar". Bij een 'auth'-fout wordt nu
+  ook `tokenExp` op 0 gezet en `gm_silent_failed` uit `sessionStorage` verwijderd
+  zodat een volgende stille vernieuwingspoging weer mogelijk is.
+- **Cancelled-event filter** — `ev.status !== 'cancelled' && ev.start && ev.end`
+  toegevoegd in zowel `loadCalendar()` als `loadTomorrowAgenda()`.
+
+### Security notes
+- De OAuth-token (read-only Calendar scope, 1 uur geldig) staat nu in de privé
+  Gist naast adressen, routes en agenda-IDs. Het dreigingsbeeld is praktisch
+  ongewijzigd: wie toegang krijgt tot de GitHub Personal Access Token heeft
+  sowieso al toegang tot alle synchroniseerde instellingen. De token verloopt
+  bovendien automatisch binnen een uur.
+
+### Notes
+- **Eenmalig herkoppelen vereist na update**: open de app in Safari (niet vanaf
+  beginscherm), ⚙️ → Google Agenda → Ontkoppelen → Koppel opnieuw. Daarna werkt
+  zowel Safari als de homescreen-webapp automatisch.
+
+  ---
+
+---
+
 ## [1.6.2] — 2026-05-19
 
 ### Fixed
