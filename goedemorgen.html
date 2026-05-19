@@ -840,6 +840,7 @@
     <!-- Sluiten -->
     <div class="s-section">
       <button class="btn-secondary" onclick="closeSettings()">Sluiten</button>
+      <div id="s-version" style="text-align:center;font-size:11px;color:var(--muted);margin-top:10px;opacity:0.6;font-family:ui-monospace,SFMono-Regular,Menlo,monospace"></div>
     </div>
   </div>
 </div>
@@ -848,6 +849,8 @@
 // ═══════════════════════════════════════════════════════════════
 //  GOEDEMORGEN — © persoonlijk gebruik
 // ═══════════════════════════════════════════════════════════════
+
+const APP_VERSION = '1.6.12';
 
 const K = {
   routes:   'gm_routes',
@@ -1311,13 +1314,19 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') _reloadIfOAuthHashPresent();
 });
 
-// Vang OAuth-redirect token (of fout) op uit URL-hash
+// Vang OAuth-redirect token (of fout) op uit URL-hash.
+// Sinds 1.6.12: manuele regex i.p.v. URLSearchParams omdat Google de hash
+// stuurt met ongecodeerde `:` en `/` in waarden (bv. `iss=https://...`).
+// iOS Safari's URLSearchParams blijkt daar in sommige scenario's niet
+// betrouwbaar mee om te gaan, waardoor `p.get('access_token')` null gaf
+// ondanks dat het token aanwezig was. Regex-extractie pakt het token
+// ongeacht hoe de overige parameters in de hash gecodeerd zijn.
 (function catchToken() {
   const hash = window.location.hash;
   if (!hash) return;
-  const p = new URLSearchParams(hash.slice(1));
 
-  if (p.get('error')) {
+  const errMatch  = hash.match(/[?&#]error=([^&]+)/);
+  if (errMatch) {
     // Stille vernieuwing mislukt (bijv. niet ingelogd bij Google) —
     // markeer als mislukt zodat init() niet opnieuw probeert te redirecten.
     sessionStorage.removeItem('gm_silent_pending');
@@ -1326,9 +1335,11 @@ document.addEventListener('visibilitychange', () => {
     return;
   }
 
-  const tok = p.get('access_token');
-  const exp = parseInt(p.get('expires_in') || '3600');
-  if (tok) {
+  const tokMatch  = hash.match(/[?&#]access_token=([^&]+)/);
+  const expMatch  = hash.match(/[?&#]expires_in=([0-9]+)/);
+  if (tokMatch) {
+    const tok = decodeURIComponent(tokMatch[1]);
+    const exp = expMatch ? parseInt(expMatch[1]) : 3600;
     ls.set(K.token,    tok);
     ls.set(K.tokenExp, Date.now() + exp * 1000);
     _justOAuthedThisLoad = true; // bescherm tegen Gist-overschrijving
@@ -1724,6 +1735,8 @@ function openSettings() {
   renderSettingsCalStatus();
   renderLocSettings();
   refreshDiag();
+  const vEl = document.getElementById('s-version');
+  if (vEl) vEl.textContent = `Goedemorgen v${APP_VERSION}`;
 }
 
 function showSaved(btn, label = 'Opslaan') {
@@ -2244,6 +2257,7 @@ function refreshDiag() {
   const gclient = ls.get(K.gclient, null);
   const home    = ls.get(K.home, null);
   const lines = [
+    `versie        : Goedemorgen v${APP_VERSION}`,
     `display-mode  : ${isStd ? 'standalone (PWA)' : 'browser (Safari)'}`,
     `GIST_TOKEN    : ${mask(GIST_TOKEN)}`,
     `GIST_ID       : ${mask(GIST_ID)}`,
