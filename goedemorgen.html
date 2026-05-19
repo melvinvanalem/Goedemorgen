@@ -826,10 +826,14 @@ const K = {
   gistId:   'gm_gist_id',
 };
 
-// Sleutels die een auto-sync naar Gist triggeren (geen OAuth-tokens, geen Gist-credentials)
+// Sleutels die een auto-sync naar Gist triggeren.
+// OAuth-token én expiry zitten er sinds 1.6.3 bij zodat een refresh in Safari
+// (waar OAuth wél werkt) doorpropageert naar de iOS-webapp op het beginscherm.
+// Gist-credentials zelf blijven uitgesloten — die komen via URL-parameter binnen.
 const SYNC_KEYS = new Set([
   'gm_routes','gm_home_address','gm_work_address','gm_kinderen',
   'gm_loc_mode','gm_loc_val','gm_gcal_cals','gm_tomtom_key','gm_gclient_id',
+  'gm_gcal_token','gm_gcal_exp',
 ]);
 let skipGistSync = false; // voorkomt recursieve sync-loop bij applySettings()
 
@@ -1224,12 +1228,19 @@ async function loadCalendar() {
     return;
   }
 
-  try {
-    const hdrs = { Authorization:`Bearer ${tok}` };
+  // Helper sinds 1.6.3: élke 401/403 op een Google-call markeert het token als
+  // ongeldig en gooit 'auth' — geen mysterieuze "niet beschikbaar" meer.
+  const hdrs = { Authorization:`Bearer ${tok}` };
+  const authedFetch = async (url) => {
+    const r = await fetch(url, { headers: hdrs });
+    if (r.status === 401 || r.status === 403) throw new Error('auth');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  };
 
+  try {
     // Haal agenda-lijst op
-    const calList = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {headers:hdrs})
-      .then(r=>{ if(!r.ok) throw new Error('auth'); return r.json(); });
+    const calList = await authedFetch('https://www.googleapis.com/calendar/v3/users/me/calendarList');
 
     const allCals    = calList.items || [];
     const enabledIds = ls.get(K.cals, null);
@@ -1243,15 +1254,24 @@ async function loadCalendar() {
     const t24   = new Date(now); t24.setHours(23,59,59,999);
 
     const fetches = await Promise.allSettled(selIds.map(id =>
-      fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(id)}/events`
+      authedFetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(id)}/events`
         + `?timeMin=${t0.toISOString()}&timeMax=${t24.toISOString()}`
-        + `&singleEvents=true&orderBy=startTime&maxResults=25`,
-        {headers:hdrs}).then(r=>r.json())
+        + `&singleEvents=true&orderBy=startTime&maxResults=25`)
     ));
+
+    // Als élke per-agenda fetch faalt met 'auth', behandel het hele blok als auth-fout
+    if (fetches.length && fetches.every(r => r.status === 'rejected' && r.reason?.message === 'auth')) {
+      throw new Error('auth');
+    }
 
     let events = [];
     for (const r of fetches) {
-      if (r.status==='fulfilled' && r.value.items) events.push(...r.value.items);
+      if (r.status==='fulfilled' && r.value.items) {
+        // Filter cancelled events en events zonder valide start/end — voorkomt crash bij rare data
+        events.push(...r.value.items.filter(ev =>
+          ev.status !== 'cancelled' && ev.start && ev.end
+        ));
+      }
     }
 
     events.sort((a,b) =>
@@ -1304,10 +1324,16 @@ async function loadCalendar() {
 
   } catch(e) {
     if (e.message==='auth') {
-      ls.set(K.token, null);
+      // Token afgewezen door Google — lokaal wissen én via Gist propageren naar
+      // andere apparaten zodat ook daar de Verbind-knop verschijnt.
+      ls.set(K.token,    null);
+      ls.set(K.tokenExp, 0);
+      sessionStorage.removeItem('gm_silent_failed'); // sta nieuwe stille poging weer toe
       el.innerHTML = `<button class="connect-btn" onclick="startOAuth()">📅 Verbind Google Agenda</button>`;
     } else {
-      el.innerHTML = `<div style="color:var(--muted);font-size:14px">Agenda niet beschikbaar</div>`;
+      // Onverwachte fout (netwerk, malformed event, etc.) — geen stille mislukking;
+      // bied de gebruiker een actie aan in plaats van een dooie melding.
+      el.innerHTML = `<button class="connect-btn" onclick="startOAuth()">🔄 Opnieuw verbinden</button>`;
     }
   }
 }
@@ -1340,7 +1366,13 @@ async function loadTomorrowAgenda(hdrs, selIds) {
 
     let events = [];
     for (const r of fetches) {
-      if (r.status === 'fulfilled' && r.value.items) events.push(...r.value.items);
+      if (r.status === 'fulfilled' && r.value.items) {
+        // Sinds 1.6.3: filter cancelled + malformed events zodat één rare afspraak
+        // de morgen-strip niet doet crashen.
+        events.push(...r.value.items.filter(ev =>
+          ev.status !== 'cancelled' && ev.start && ev.end
+        ));
+      }
     }
     events.sort((a,b) => new Date(a.start.dateTime||a.start.date) - new Date(b.start.dateTime||b.start.date));
 
@@ -1878,7 +1910,7 @@ function importSettings(event) {
 
 function buildSettingsPayload() {
   return {
-    _version:  '1.3.2',
+    _version:  '1.6.3',
     _synced:   new Date().toISOString(),
     routes:    ls.get(K.routes,   []),
     home:      ls.get(K.home,     null),
@@ -1889,6 +1921,8 @@ function buildSettingsPayload() {
     calendars: ls.get(K.cals,     null),
     tomtom:    ls.get(K.tomtom,   null),
     gclient:   ls.get(K.gclient,  null),
+    gcalToken: ls.get(K.token,    null),
+    gcalExp:   ls.get(K.tokenExp, 0),
   };
 }
 
@@ -1903,6 +1937,8 @@ function applySettings(data) {
   if (data.calendars !== undefined) ls.set(K.cals,     data.calendars);
   if (data.tomtom    !== undefined) ls.set(K.tomtom,   data.tomtom);
   if (data.gclient   !== undefined) ls.set(K.gclient,  data.gclient);
+  if (data.gcalToken !== undefined) ls.set(K.token,    data.gcalToken);
+  if (data.gcalExp   !== undefined) ls.set(K.tokenExp, data.gcalExp);
   skipGistSync = false;
 }
 
