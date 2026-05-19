@@ -5,6 +5,35 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.6.8] — 2026-05-19
+
+### Fixed
+- **Tandwiel-knop half buiten beeld op iPhone** — de klok in HH:MM:SS-formaat
+  op 66px font-size was breder dan de iPhone content-area (~358px op iPhone 14
+  portrait). Met `justify-content: space-between` en `flex-shrink: 0` op de
+  actieknoppen werd de header daardoor breder dan de viewport, waardoor het
+  rechter tandwieltje letterlijk van het scherm afgesneden werd. Niet zichtbaar
+  op laptop omdat `max-width: 480px` daar meer ruimte heeft.
+
+  Opgelost met `font-size: clamp(44px, 13vw, 66px)` op `#clock` — de klok
+  schaalt nu mee met de viewport-breedte (min 44px op kleine telefoons,
+  max 66px op laptops). Op iPhone 14 (390px) ≈ 51px → "20:28:25" blijft
+  ruim binnen het scherm en de knoppen zijn weer volledig zichtbaar.
+- **Sporadische "Niet beschikbaar" op geldige routes** — `calcRoute()` gebruikte
+  sinds 1.6.5 `fetchJsonWithRetry()` (twee retries met exponentiële backoff)
+  voor de routing-call, maar `geocode()` deed nog steeds één kale `fetch()`
+  zonder retry. Eén tijdelijke TomTom 429 of 5xx op geocode-niveau brak
+  daardoor direct de hele route, ook al was de adres-string geldig. Routes met
+  een gecached adres (zoals de kindroutes na de eerste succesvolle lookup)
+  bleven werken — vandaar dat het wisselend leek per refresh, per route.
+
+  Opgelost door `geocode()` óók via `fetchJsonWithRetry()` te laten lopen.
+  Eens een adres succesvol gegeocodeerd is wordt het 7 dagen gecached
+  (`gm_geocode_cache`), dus alleen de éérste lookup van een nieuw adres is
+  nog gevoelig voor TomTom-flakkering, en die heeft nu twee retries achter
+  de hand.
+
+---
 ## [1.6.7] — 2026-05-19
 
 ### Fixed
