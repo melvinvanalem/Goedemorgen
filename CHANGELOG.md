@@ -5,6 +5,45 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.6.15] — 2026-05-19
+
+### Added
+- **Auto-refresh dashboard bij hervatten** — wanneer de app weer zichtbaar
+  wordt na ≥30s onzichtbaar te zijn geweest (op de achtergrond, app-switch,
+  scherm uit), worden weer/reistijd/agenda/nieuws automatisch vernieuwd.
+  Geen handmatige tik op ↻ meer nodig nadat je de app even niet open had.
+- **"Bijgewerkt: …" indicator onderaan het dashboard** met daarachter het
+  versienummer. Het label updatet zichzelf elke 15 seconden ("zojuist" →
+  "1 min geleden" → "5 min geleden") zodat je in één blik ziet hoe vers
+  de data is. Plek: een subtiele monospace-regel onder de nieuwskaart.
+- **Proactieve OAuth-token-vernieuwing** — bij elke return-naar-app (en
+  bij init) wordt gecheckt of het Google-token binnen 5 minuten verloopt;
+  zo ja, dan probeert de app in Safari een stille vernieuwing **voordat**
+  het token daadwerkelijk verlopen is. Voorkomt dat je een actief moment
+  in de app ineens de Verbind-knop ziet.
+- **Cooldown op `gm_silent_failed`** — een mislukte stille vernieuwing
+  blokkeerde voorheen permanent dat de app het opnieuw probeerde, totdat
+  je de tab sloot. Na 10 minuten vervalt de blokkade nu automatisch, zodat
+  de app vanzelf opnieuw een poging waagt. Geen handmatig re-koppelen
+  meer als de eerdere mislukking een tijdelijke hiccup was.
+
+### Changed
+- **Eén `visibilitychange`-listener** in plaats van twee — combineert nu de
+  OAuth-hash-detectie (uit 1.6.13) met de nieuwe auto-refresh + proactieve
+  token-vernieuwing. Voorkomt dubbele triggers en houdt de event-flow
+  overzichtelijk.
+- **`refreshAll()`** werkt ook zonder de refresh-knop in de DOM (voor het
+  geval auto-refresh getriggerd wordt op een moment dat de knop nog niet
+  klaar is). Past `_lastRefreshTime` aan en werkt het label bij.
+
+### Notes
+- **iOS-limitatie blijft staan**: in de standalone-webapp op het beginscherm
+  werkt stille vernieuwing fundamenteel niet (de redirect naar Google opent
+  Safari, niet de PWA). Daar blijf je afhankelijk van Gist-sync vanuit
+  Safari voor verse tokens. In Safari zelf werkt het wel automatisch.
+
+  ---
+
 ## [1.6.14] — 2026-05-19
 
 ### Fixed
