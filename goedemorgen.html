@@ -677,6 +677,11 @@
   </div>
 </div>
 
+<!-- ── Dashboard footer: laatste update + versie (sinds 1.6.15) ─ -->
+<div id="dash-footer" style="text-align:center;font-size:11px;color:var(--muted);margin-top:16px;opacity:0.55;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;padding-bottom:8px">
+  <span id="last-update-label">Bijgewerkt: zojuist</span> · v<span id="dash-version">…</span>
+</div>
+
 <!-- ── Instellingen overlay ───────────────────────────────────── -->
 <div class="overlay" id="overlay" onclick="onOverlayClick(event)">
   <div class="settings-sheet" id="settings-sheet">
@@ -850,7 +855,7 @@
 //  GOEDEMORGEN — © persoonlijk gebruik
 // ═══════════════════════════════════════════════════════════════
 
-const APP_VERSION = '1.6.14';
+const APP_VERSION = '1.6.15';
 
 const K = {
   routes:   'gm_routes',
@@ -1304,9 +1309,8 @@ window.addEventListener('pageshow', (event) => {
   if (event.persisted) _onPossibleReturn();
 });
 window.addEventListener('hashchange', _onPossibleReturn);
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') _onPossibleReturn();
-});
+// visibilitychange wordt in het refresh-blok hieronder afgehandeld (één listener,
+// die zowel OAuth-return als auto-refresh dekt).
 
 // Sinds 1.6.13: catchToken is een herhaaldelijk aanroepbare functie geworden.
 // Sinds 1.6.14: kogelvrij — de hele functie zit in een try/catch zodat een
@@ -1322,9 +1326,12 @@ function catchToken() {
     const errMatch = hash.match(/[?&#]error=([^&]+)/);
     if (errMatch) {
       // Stille vernieuwing mislukt (bijv. niet ingelogd bij Google) —
-      // markeer als mislukt zodat init() niet opnieuw probeert te redirecten.
+      // markeer als mislukt zodat init() niet direct opnieuw probeert.
+      // Sinds 1.6.15: ook een timestamp zodat de cooldown na 10 min verloopt
+      // en de app automatisch opnieuw probeert (i.p.v. handmatig re-koppelen).
       try { sessionStorage.removeItem('gm_silent_pending'); } catch {}
       try { sessionStorage.setItem('gm_silent_failed', '1'); } catch {}
+      try { sessionStorage.setItem('gm_silent_failed_at', String(Date.now())); } catch {}
       try { history.replaceState(null, '', window.location.pathname); } catch {}
       return false;
     }
@@ -1343,6 +1350,7 @@ function catchToken() {
       _justOAuthedThisLoad = true; // bescherm tegen Gist-overschrijving
       try { sessionStorage.removeItem('gm_silent_pending'); } catch {}
       try { sessionStorage.removeItem('gm_silent_failed'); } catch {}
+      try { sessionStorage.removeItem('gm_silent_failed_at'); } catch {}
       try { history.replaceState(null, '', window.location.pathname); } catch {}
       return true;
     }
@@ -1352,6 +1360,19 @@ function catchToken() {
     return false;
   }
 }
+
+// Sinds 1.6.15: verwijder gm_silent_failed als die ouder dan 10 minuten is.
+// Voorkomt dat één mislukte poging permanent blokkeert dat we het ooit nog
+// proberen — automatische herretry zonder dat de gebruiker iets hoeft te doen.
+(function clearStaleSilentFailed() {
+  try {
+    const at = parseInt(sessionStorage.getItem('gm_silent_failed_at') || '0');
+    if (at && Date.now() - at > 10 * 60 * 1000) {
+      sessionStorage.removeItem('gm_silent_failed');
+      sessionStorage.removeItem('gm_silent_failed_at');
+    }
+  } catch {}
+})();
 
 // Eerste aanroep bij script-evaluatie (de normale, snelste route)
 catchToken();
@@ -2306,16 +2327,23 @@ function resetOAuthState() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  REFRESH — handmatige vernieuwing via knop in header
+//  REFRESH — handmatige + automatische vernieuwing
 // ═══════════════════════════════════════════════════════════════
 // iOS standalone webapps ondersteunen pull-to-refresh niet betrouwbaar.
-// Deze knop herlaadt alle dashboard-secties parallel met een spinner-icoon
-// als visuele feedback. Locatie wordt verfrist bij modus 'auto'.
+// Sinds 1.6.15: ook automatisch wanneer de app weer zichtbaar wordt na
+// ≥30s onzichtbaar, en het token wordt proactief vernieuwd (in Safari)
+// als die binnen 5 minuten gaat verlopen. Een "Bijgewerkt:" label
+// onderaan toont hoe vers de data is.
+let _lastRefreshTime = Date.now();
+let _hiddenSince     = null;
+
 async function refreshAll() {
   const btn = document.getElementById('refresh-btn');
-  if (!btn || btn.disabled) return;
-  btn.disabled = true;
-  btn.classList.add('spinning');
+  if (btn) {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.classList.add('spinning');
+  }
   try {
     await Promise.allSettled([
       loadWeather(),
@@ -2323,14 +2351,76 @@ async function refreshAll() {
       loadCalendar(),
       loadNews(),
     ]);
+    _lastRefreshTime = Date.now();
+    updateLastUpdateLabel();
   } finally {
-    // Minimum 600ms spinner zodat de feedback zichtbaar is bij snelle responses
-    setTimeout(() => {
-      btn.classList.remove('spinning');
-      btn.disabled = false;
-    }, 600);
+    if (btn) {
+      // Minimum 600ms spinner zodat de feedback zichtbaar is bij snelle responses
+      setTimeout(() => {
+        btn.classList.remove('spinning');
+        btn.disabled = false;
+      }, 600);
+    }
   }
 }
+
+function updateLastUpdateLabel() {
+  const el = document.getElementById('last-update-label');
+  if (!el) return;
+  const sec = Math.floor((Date.now() - _lastRefreshTime) / 1000);
+  let text;
+  if (sec < 10)       text = 'zojuist';
+  else if (sec < 60)  text = `${sec}s geleden`;
+  else if (sec < 3600) text = `${Math.floor(sec/60)} min geleden`;
+  else                text = `${Math.floor(sec/3600)} u geleden`;
+  el.textContent = `Bijgewerkt: ${text}`;
+}
+// Werk het label elke 15s bij zodat "zojuist" → "1 min geleden" zichtbaar wordt
+setInterval(updateLastUpdateLabel, 15000);
+
+// Auto-refresh wanneer de app weer zichtbaar wordt na een korte pauze.
+// Plus een poging tot proactieve token-vernieuwing in Safari als het token
+// bijna verloopt — voorkomt dat je 's ochtends de Verbind-knop ziet.
+function isInStandaloneMode() {
+  return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+      || window.navigator.standalone === true;
+}
+
+function maybeAutoRefreshOnReturn() {
+  // Probeer proactief het token te vernieuwen als die binnen 5 min verloopt.
+  // Alleen in Safari (browser-mode); in standalone PWA leidt de redirect
+  // naar Safari en breekt de webapp-context.
+  const exp      = ls.get(K.tokenExp, 0);
+  const timeLeft = exp - Date.now();
+  if (exp > 0 && timeLeft < 5 * 60 * 1000
+      && !isInStandaloneMode()
+      && ls.get(K.gclient)
+      && !sessionStorage.getItem('gm_silent_pending')
+      && !sessionStorage.getItem('gm_silent_failed')) {
+    silentTokenRefresh();
+    return; // redirect naar Google — refreshAll niet meer nodig
+  }
+  refreshAll();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    _hiddenSince = Date.now();
+    return;
+  }
+  if (document.visibilityState !== 'visible') return;
+
+  // Vang een eventuele OAuth-return op (catchToken op een vroeger pad gemist)
+  _onPossibleReturn();
+
+  // Auto-refresh als de app langer dan 30s onzichtbaar was
+  if (_hiddenSince && (Date.now() - _hiddenSince) > 30 * 1000) {
+    _hiddenSince = null;
+    maybeAutoRefreshOnReturn();
+  } else {
+    _hiddenSince = null;
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════
 //  INIT
@@ -2374,6 +2464,10 @@ async function refreshAll() {
       </div>`;
   }
 
+  // Vul het versie-label onderaan het dashboard
+  const vEl = document.getElementById('dash-version');
+  if (vEl) vEl.textContent = APP_VERSION;
+
   // Alles parallel laden
   await Promise.allSettled([
     loadWeather(),
@@ -2381,6 +2475,10 @@ async function refreshAll() {
     loadCalendar(),
     loadNews(),
   ]);
+
+  // Markeer de tijd van eerste succesvolle load voor het "Bijgewerkt:" label
+  _lastRefreshTime = Date.now();
+  updateLastUpdateLabel();
 })();
 </script>
 </body>
